@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Boardroom AI mark</title>
+  <desc id="desc">Circular executive table mark with connected decision nodes.</desc>
+  <rect width="512" height="512" rx="96" fill="#07090d"/>
+  <circle cx="256" cy="256" r="156" fill="none" stroke="#27313d" stroke-width="20"/>
+  <circle cx="256" cy="256" r="92" fill="#11151b" stroke="#38d6c6" stroke-width="12"/>
+  <path d="M256 116v72M396 256h-72M256 396v-72M116 256h72" stroke="#f6c85f" stroke-width="18" stroke-linecap="round"/>
+  <circle cx="256" cy="116" r="24" fill="#38d6c6"/>
+  <circle cx="396" cy="256" r="24" fill="#e66f7f"/>
+  <circle cx="256" cy="396" r="24" fill="#9f8cff"/>
+  <circle cx="116" cy="256" r="24" fill="#f6c85f"/>
+  <path d="M218 260l27 27 54-68" fill="none" stroke="#d7dee8" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
