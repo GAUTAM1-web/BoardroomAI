@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Boardroom AI
 
 Boardroom AI is an AI-powered executive operating system for founders. A founder submits a startup brief, and the system convenes an AI board meeting where executive agents debate, revise, vote, and produce an investor-grade operating report.
@@ -87,3 +88,4 @@ The local development URLs are:
 The first implementation uses a deterministic local AI provider for repeatable offline development and tests. The provider is not mock logic: it evaluates the founder brief through role-specific strategic heuristics, generates disagreement, produces revisions, and computes consensus. The provider abstraction is designed so OpenAI, Claude, Gemini, and Ollama implementations can be added without changing the domain orchestration.
 
 PostgreSQL is the only relational database target. SQLite is intentionally not used in runtime or tests.
+
