@@ -37,7 +37,9 @@ async def list_executives() -> ExecutiveCatalogResponse:
 
 @router.post("/board-meetings", response_model=BoardMeetingResponse)
 async def create_board_meeting(payload: StartupBriefRequest) -> BoardMeetingResponse:
-    orchestrator = BoardMeetingOrchestrator(provider=LocalExecutiveIntelligenceProvider())
+    orchestrator = BoardMeetingOrchestrator(
+        provider=LocalExecutiveIntelligenceProvider()
+    )
     result = orchestrator.run(payload.to_domain())
     return BoardMeetingResponse.model_validate(result.to_dict())
 
@@ -45,9 +47,11 @@ async def create_board_meeting(payload: StartupBriefRequest) -> BoardMeetingResp
 @router.websocket("/board-meetings/live")
 async def stream_board_meeting(websocket: WebSocket) -> None:
     await websocket.accept()
+
     try:
         raw_payload = await websocket.receive_json()
         payload = StartupBriefRequest.model_validate(raw_payload)
+
     except ValidationError as exc:
         await websocket.send_json(
             {
@@ -60,6 +64,7 @@ async def stream_board_meeting(websocket: WebSocket) -> None:
         )
         await websocket.close(code=1003)
         return
+
     except WebSocketDisconnect:
         return
 
@@ -71,11 +76,19 @@ async def stream_board_meeting(websocket: WebSocket) -> None:
     try:
         async with AsyncSessionLocal() as session:
             repository = PostgresMeetingRepository(session)
-            async for event in orchestrator.stream(payload.to_domain(), recorder=repository):
+
+            async for event in orchestrator.stream(
+                payload.to_domain(),
+                recorder=repository,
+            ):
                 await websocket.send_json(event.to_dict())
+
     except WebSocketDisconnect:
         return
+
     except Exception as exc:
+
+
         await websocket.send_json(
             {
                 "event_type": "error",
