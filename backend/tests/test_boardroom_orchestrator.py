@@ -37,6 +37,8 @@ def test_board_meeting_generates_required_report_sections() -> None:
 
     required_sections = {
         "executive_summary",
+        "startup_overview",
+        "executive_opinions",
         "business_plan",
         "market_analysis",
         "competitor_analysis",
@@ -50,6 +52,10 @@ def test_board_meeting_generates_required_report_sections() -> None:
         "marketing_strategy",
         "investment_readiness",
         "risk_assessment",
+        "financial_analysis",
+        "risk_matrix",
+        "action_plan",
+        "vc_readiness_score",
         "pitch_deck_summary",
         "ninety_day_roadmap",
         "board_vote",

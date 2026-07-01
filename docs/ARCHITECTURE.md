@@ -76,6 +76,8 @@ Milestone 1 ships with a deterministic local provider because it gives repeatabl
 
 Milestone 2 adds a live streaming orchestrator beside the synchronous orchestrator. It emits typed boardroom events over WebSockets, records every event to PostgreSQL, and maintains meeting-scoped executive memory so executives can reference earlier arguments while the discussion unfolds.
 
+Milestone 3 adds the founder operating workspace on top of the same contracts: deterministic startup idea generation, dashboard metrics, meeting history, global search, favorites, compare, delete, and report exports. These features reuse persisted meetings and report sections instead of introducing a separate artifact store.
+
 Future provider routing:
 
 - local provider for tests, demos, and fallback
@@ -140,16 +142,16 @@ Milestone 1 routes:
 
 - `GET /health` - service health
 - `GET /api/v1/executives` - executive role catalog
+- `POST /api/v1/startup-ideas/generate` - generate startup ideas with launch-ready briefs
 - `POST /api/v1/board-meetings` - generate a board meeting and structured report
 - `WS /api/v1/board-meetings/live` - stream a persisted live board meeting
-
-Future routes:
-
-- `GET /api/v1/board-meetings/{id}`
-- `GET /api/v1/board-meetings/{id}/events`
-- `POST /api/v1/board-meetings/{id}/revise`
-- `POST /api/v1/reports/{id}/export`
-- `POST /api/v1/research/jobs`
+- `GET /api/v1/dashboard` - dashboard statistics and recent activity
+- `GET /api/v1/board-meetings` - searchable meeting history
+- `GET /api/v1/board-meetings/{id}` - full persisted meeting and report
+- `PATCH /api/v1/board-meetings/{id}/favorite` - favorite a startup or meeting
+- `DELETE /api/v1/board-meetings/{id}` - delete a meeting history item
+- `GET /api/v1/search` - global search across meetings, reports, and executives
+- `GET /api/v1/reports/{id}/export` - export PDF, Markdown, or JSON
 
 ## Milestone Roadmap
 
@@ -165,24 +167,28 @@ Future routes:
    - stream meeting progress over WebSockets
    - async job execution with Redis-backed queues
 
-3. **LLM Provider Router**
+3. **Founder Operating Workspace**
+   - premium dashboard, responsive boardroom, idea generator, history, search, compare
+   - professional report sections, VC readiness scoring, and PDF/Markdown/JSON exports
+   - favorites and delete history
+
+4. **LLM Provider Router**
    - OpenAI, Claude, Gemini, and Ollama adapters
    - provider fallback strategy
    - token/cost telemetry
    - prompt versioning and evaluation fixtures
 
-4. **Strategic Memory and Research**
+5. **Strategic Memory and Research**
    - Qdrant collections for market memory, competitor dossiers, and founder history
    - retrieval-augmented market analysis
    - source attribution and confidence calibration
 
-5. **Investor-Grade Artifact Suite**
-   - PDF report export
+6. **Investor-Grade Artifact Suite**
    - pitch deck outline and slide generation
    - financial forecast modeling
-   - board decision history
+   - deeper board decision history
 
-6. **Production Platform**
+7. **Production Platform**
    - organization accounts
    - audit logs
    - billing boundaries

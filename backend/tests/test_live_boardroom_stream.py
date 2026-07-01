@@ -5,7 +5,11 @@ from typing import Any, cast
 import pytest
 
 from app.domain.boardroom.models import StartupBrief
-from app.domain.boardroom.streaming import LiveBoardMeetingOrchestrator, NoopMeetingRecorder
+from app.domain.boardroom.streaming import (
+    REPORT_SECTION_TITLES,
+    LiveBoardMeetingOrchestrator,
+    NoopMeetingRecorder,
+)
 from app.infrastructure.ai.local_provider import LocalExecutiveIntelligenceProvider
 
 pytestmark = pytest.mark.asyncio
@@ -75,6 +79,6 @@ async def test_live_stream_generates_streamed_report_sections() -> None:
     final_payload = cast(dict[str, Any], final_event["payload"])
     final_result = cast(dict[str, Any], final_payload["result"])
 
-    assert len(section_events) == 18
+    assert len(section_events) == len(REPORT_SECTION_TITLES)
     assert first_section["section_key"] == "executive_summary"
     assert final_result["consensus_reached"] is True

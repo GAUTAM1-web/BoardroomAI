@@ -83,7 +83,7 @@ class LocalExecutiveIntelligenceProvider:
         recommendations = tuple(
             self._recommendation_for_risk(profile.role, risk, brief)
             for risk, _score in focused_risks[:3]
-        )
+        ) + (self._opportunity_for_role(profile.role, brief),)
         message = self._message_for_profile(profile, brief, stance, focused_risks, opening_thesis)
 
         return ExecutiveOpinion(
@@ -110,6 +110,7 @@ class LocalExecutiveIntelligenceProvider:
                 "and measurement infrastructure."
             ),
             "Define kill criteria so the board can stop, pivot, or fundraise with evidence.",
+            "Pursue one distribution or data partnership that reduces acquisition risk.",
         )
         confidence = clamp(0.84 - assessment.overall_risk * 0.12, 0.58, 0.92)
         message = (
@@ -183,11 +184,43 @@ class LocalExecutiveIntelligenceProvider:
     ) -> str:
         strongest = focused_risks[0][0]
         goal = profile.goals[0]
+        follow_up = self._follow_up_question(profile.role, brief)
+        challenge = self._challenge_for_role(profile.role, opening_thesis.role)
         return (
-            f"{profile.role} is {stance}. To {goal}, the plan for "
+            f"{profile.role} is {stance}. {challenge} To {goal}, the plan for "
             f"'{brief.startup_idea}' must address "
             f"that {RISK_LABELS[strongest]}. The CEO thesis is directionally useful, but it needs "
-            "measurable gates before the board should treat it as an operating plan."
+            f"measurable gates before the board should treat it as an operating plan. "
+            f"My follow-up question: {follow_up}"
+        )
+
+    def _challenge_for_role(self, role: str, opening_role: str) -> str:
+        if role in {"CFO", "Legal Advisor", "Cybersecurity Expert"}:
+            return f"I am challenging the {opening_role}'s assumption that speed is the main risk."
+        if role in {"Growth Strategist", "CMO", "Investor", "VC Partner"}:
+            return "I agree with the ambition, but the acquisition wedge is under-specified."
+        if role in {"CTO", "Data Scientist", "AI Ethics Advisor"}:
+            return "I disagree with treating the AI layer as proven before data quality is tested."
+        return "I agree with the direction, but the operating detail is not yet board-ready."
+
+    def _follow_up_question(self, role: str, brief: StartupBrief) -> str:
+        questions = {
+            "CFO": (
+                "Which three paid pilots can validate willingness to pay inside "
+                f"{brief.budget:,.0f}?"
+            ),
+            "CTO": "What is the smallest architecture spike that can fail fast in two weeks?",
+            "COO": "Who owns onboarding, support, and escalation when the first pilot goes live?",
+            "CMO": "What painful trigger makes the buyer search for this now?",
+            "Investor": "What evidence would make this fundable before the next round?",
+            "VC Partner": "How does this become a venture-scale category rather than a feature?",
+            "Legal Advisor": "Which compliance claims must be true before launch?",
+            "Cybersecurity Expert": "What customer data never enters the model path?",
+            "AI Ethics Advisor": "How will users understand and contest automated recommendations?",
+        }
+        return questions.get(
+            role,
+            "What assumption should the board force the founder to prove first?",
         )
 
     def _recommendation_for_risk(self, role: str, risk: str, brief: StartupBrief) -> str:
@@ -226,6 +259,34 @@ class LocalExecutiveIntelligenceProvider:
             ),
         }
         return recommendations[risk]
+
+    def _opportunity_for_role(self, role: str, brief: StartupBrief) -> str:
+        opportunities = {
+            "CMO": (
+                f"{role}: package the first case study as a category narrative "
+                f"for {brief.industry}."
+            ),
+            "Growth Strategist": (
+                f"{role}: test partner-led distribution to reach {brief.target_audience}."
+            ),
+            "Investor": f"{role}: turn pilot economics into an investor-ready traction memo.",
+            "VC Partner": (
+                f"{role}: frame the wedge as the first step toward a larger operating graph."
+            ),
+            "Legal Advisor": (
+                f"{role}: use compliance readiness as a trust advantage, not only a constraint."
+            ),
+            "Cybersecurity Expert": (
+                f"{role}: make security posture visible in sales and onboarding."
+            ),
+        }
+        return opportunities.get(
+            role,
+            (
+                f"{role}: identify one partnership that accelerates trust with "
+                f"{brief.target_audience}."
+            ),
+        )
 
     def _top_repeated_concerns(self, critiques: tuple[ExecutiveOpinion, ...]) -> list[str]:
         counts: dict[str, int] = {}

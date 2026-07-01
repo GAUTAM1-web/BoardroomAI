@@ -10,6 +10,34 @@ export type StartupBriefPayload = {
   business_model: string;
 };
 
+export type StartupIdeaGenerationPayload = {
+  prompt?: string;
+  interests?: string;
+  industry?: string;
+  country?: string;
+  budget?: number;
+  business_model?: string;
+  funding_stage?: string;
+  number_of_ideas?: number;
+};
+
+export type StartupIdea = {
+  startup_name: string;
+  tagline: string;
+  problem: string;
+  solution: string;
+  target_audience: string;
+  revenue_model: string;
+  estimated_startup_cost: number;
+  estimated_tam: string;
+  innovation_score: number;
+  scalability_score: number;
+  difficulty: string;
+  competitive_advantage: string;
+  success_probability: number;
+  meeting_brief: StartupBriefPayload;
+};
+
 export type MeetingTurn = {
   sequence?: number | null;
   round_number: number;
@@ -52,6 +80,61 @@ export type BoardMeetingResult = {
   turns: MeetingTurn[];
   votes: BoardVote[];
   report: BoardReport;
+};
+
+export type BoardMeetingDetail = BoardMeetingResult & {
+  startup_brief: StartupBriefPayload;
+  status: string;
+  is_favorite: boolean;
+  created_at?: string | null;
+  completed_at?: string | null;
+};
+
+export type MeetingSummary = {
+  meeting_id: string;
+  startup_idea: string;
+  industry: string;
+  country: string;
+  decision: string;
+  status: string;
+  aggregate_confidence: number;
+  consensus_reached: boolean;
+  is_favorite: boolean;
+  created_at?: string | null;
+  completed_at?: string | null;
+  report_title?: string | null;
+};
+
+export type DashboardSnapshot = {
+  total_meetings: number;
+  reports_generated: number;
+  approval_rate: number;
+  average_confidence: number;
+  top_industries: Array<{ industry: string; count: number }>;
+  recent_meetings: MeetingSummary[];
+  recent_reports: MeetingSummary[];
+  recent_board_decisions: MeetingSummary[];
+};
+
+export type GlobalSearchResults = {
+  query: string;
+  meetings: MeetingSummary[];
+  reports: Array<{
+    meeting_id: string;
+    report_id: string;
+    title: string;
+    section_key: string;
+    section_title: string;
+    startup_idea: string;
+    decision: string;
+  }>;
+  executives: Array<{
+    role: string;
+    charter: string;
+    personality: string;
+    goals: string[];
+    risk_focus: string[];
+  }>;
 };
 
 export type LiveBoardroomEventType =

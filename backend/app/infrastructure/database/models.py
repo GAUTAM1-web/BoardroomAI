@@ -40,6 +40,7 @@ class BoardMeetingRecord(Base):
         PG_UUID(as_uuid=True), ForeignKey("startup_briefs.id", ondelete="CASCADE"), nullable=False
     )
     status: Mapped[str] = mapped_column(String(40), nullable=False)
+    is_favorite: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     consensus_reached: Mapped[bool] = mapped_column(Boolean, nullable=False)
     aggregate_confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
     decision: Mapped[str] = mapped_column(String(80), nullable=False)

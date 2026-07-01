@@ -25,6 +25,8 @@ from app.domain.boardroom.roles import EXECUTIVE_PROFILES
 
 REPORT_SECTION_TITLES = {
     "executive_summary": "Executive Summary",
+    "startup_overview": "Startup Overview",
+    "executive_opinions": "Executive Opinions",
     "business_plan": "Business Plan",
     "market_analysis": "Market Analysis",
     "competitor_analysis": "Competitor Analysis",
@@ -38,6 +40,10 @@ REPORT_SECTION_TITLES = {
     "marketing_strategy": "Marketing Strategy",
     "investment_readiness": "Investment Readiness",
     "risk_assessment": "Risk Assessment",
+    "financial_analysis": "Financial Analysis",
+    "risk_matrix": "Risk Matrix",
+    "action_plan": "Action Plan",
+    "vc_readiness_score": "VC Readiness Score",
     "pitch_deck_summary": "Pitch Deck Summary",
     "ninety_day_roadmap": "90-Day Roadmap",
     "board_vote": "Board Vote",

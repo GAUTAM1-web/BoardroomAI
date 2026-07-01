@@ -18,17 +18,22 @@ body {
 
 body {
   margin: 0;
+  overflow-x: hidden;
   background:
     linear-gradient(135deg, rgba(56, 214, 198, 0.08), transparent 32%),
     linear-gradient(315deg, rgba(246, 200, 95, 0.07), transparent 28%),
+    linear-gradient(180deg, rgba(159, 140, 255, 0.06), transparent 42%),
     #07090d;
   color: #d7dee8;
   font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
 }
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -45,7 +50,7 @@ textarea {
 }
 
 .glass-panel {
-  background: rgba(17, 21, 27, 0.78);
+  background: linear-gradient(180deg, rgba(22, 27, 35, 0.86), rgba(12, 15, 21, 0.78));
   border: 1px solid rgba(255, 255, 255, 0.09);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(22px);
@@ -55,3 +60,20 @@ textarea {
   text-wrap: balance;
 }
 
+::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(139, 152, 169, 0.35);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 214, 198, 0.45);
+}

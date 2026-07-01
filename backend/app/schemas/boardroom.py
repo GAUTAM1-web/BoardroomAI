@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.domain.boardroom.ideas import StartupIdeaRequest
 from app.domain.boardroom.models import StartupBrief
 
 
@@ -40,6 +41,62 @@ class StartupBriefRequest(BaseModel):
             funding_stage=self.funding_stage.strip(),
             business_model=self.business_model.strip(),
         )
+
+
+class StartupBriefResponse(BaseModel):
+    startup_idea: str
+    industry: str
+    country: str
+    budget: float
+    timeline_months: int
+    competitors: list[str]
+    target_audience: str
+    funding_stage: str
+    business_model: str
+
+
+class StartupIdeaGenerationRequest(BaseModel):
+    prompt: str | None = Field(default=None, max_length=500)
+    interests: str | None = Field(default=None, max_length=240)
+    industry: str | None = Field(default=None, max_length=160)
+    country: str | None = Field(default=None, max_length=120)
+    budget: float | None = Field(default=None, gt=0)
+    business_model: str | None = Field(default=None, max_length=120)
+    funding_stage: str | None = Field(default=None, max_length=80)
+    number_of_ideas: int | None = Field(default=None, ge=1, le=30)
+
+    def to_domain(self) -> StartupIdeaRequest:
+        return StartupIdeaRequest(
+            prompt=self.prompt,
+            interests=self.interests,
+            industry=self.industry,
+            country=self.country,
+            budget=self.budget,
+            business_model=self.business_model,
+            funding_stage=self.funding_stage,
+            number_of_ideas=self.number_of_ideas,
+        )
+
+
+class StartupIdeaResponse(BaseModel):
+    startup_name: str
+    tagline: str
+    problem: str
+    solution: str
+    target_audience: str
+    revenue_model: str
+    estimated_startup_cost: float
+    estimated_tam: str
+    innovation_score: int
+    scalability_score: int
+    difficulty: str
+    competitive_advantage: str
+    success_probability: int
+    meeting_brief: StartupBriefResponse
+
+
+class StartupIdeasResponse(BaseModel):
+    ideas: list[StartupIdeaResponse]
 
 
 class ExecutiveProfileResponse(BaseModel):
@@ -92,3 +149,61 @@ class BoardMeetingResponse(BaseModel):
     turns: list[MeetingTurnResponse]
     votes: list[BoardVoteResponse]
     report: BoardReportResponse
+
+
+class MeetingSummaryResponse(BaseModel):
+    meeting_id: str
+    startup_idea: str
+    industry: str
+    country: str
+    decision: str
+    status: str
+    aggregate_confidence: float
+    consensus_reached: bool
+    is_favorite: bool
+    created_at: str | None = None
+    completed_at: str | None = None
+    report_title: str | None = None
+
+
+class MeetingHistoryResponse(BaseModel):
+    meetings: list[MeetingSummaryResponse]
+
+
+class BoardMeetingDetailResponse(BoardMeetingResponse):
+    startup_brief: StartupBriefResponse
+    status: str
+    is_favorite: bool
+    created_at: str | None = None
+    completed_at: str | None = None
+
+
+class FavoriteMeetingRequest(BaseModel):
+    is_favorite: bool
+
+
+class FavoriteMeetingResponse(BaseModel):
+    meeting_id: str
+    is_favorite: bool
+
+
+class DashboardResponse(BaseModel):
+    total_meetings: int
+    reports_generated: int
+    approval_rate: float
+    average_confidence: float
+    top_industries: list[dict[str, Any]]
+    recent_meetings: list[MeetingSummaryResponse]
+    recent_reports: list[MeetingSummaryResponse]
+    recent_board_decisions: list[MeetingSummaryResponse]
+
+
+class GlobalSearchResponse(BaseModel):
+    query: str
+    meetings: list[MeetingSummaryResponse]
+    reports: list[dict[str, Any]]
+    executives: list[ExecutiveProfileResponse]
+
+
+class ExportFormatResponse(BaseModel):
+    format: Literal["json", "markdown", "pdf"]

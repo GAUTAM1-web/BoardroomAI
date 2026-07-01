@@ -1,42 +1,41 @@
-<<<<<<< HEAD
 # Boardroom AI
 
-Boardroom AI is an AI-powered executive operating system for founders. A founder submits a startup brief, and the system convenes an AI board meeting where executive agents debate, revise, vote, and produce an investor-grade operating report.
+Boardroom AI is an AI-powered operating system for founders. It turns a startup brief into a live executive board meeting, streams the debate over WebSockets, persists the meeting to PostgreSQL, and generates investor-grade reports with PDF, Markdown, and JSON exports.
 
-This repository is organized as a production-oriented monorepo:
+## Current Capabilities
 
-- `backend/` - FastAPI, domain orchestration, PostgreSQL models, Alembic migrations.
-- `frontend/` - Next.js, TypeScript, Tailwind CSS, shadcn-style primitives, Framer Motion, TanStack Query, Zustand.
-- `docs/` - architecture, data model, API contract, AI system design, and milestone roadmap.
-- `infra/` - infrastructure notes and future Kubernetes-ready boundaries.
+- Premium founder dashboard with recent meetings, reports, generated ideas, board decisions, approval rate, average confidence, top industries, filters, and global search.
+- AI startup idea generator with interests, industry, country, budget, business model, funding stage, and idea count controls.
+- Startup idea cards with name, tagline, problem, solution, audience, revenue model, startup cost, TAM, innovation, scalability, difficulty, advantage, and success probability.
+- One-click launch from a generated idea into a live board meeting.
+- Manual founder brief creation remains available.
+- Live boardroom with 18 executive roles, active speaker indicators, status animation, confidence changes, vote changes, timeline, risk signals, and streamed report sections.
+- Smarter deterministic executive debate with challenges, agreement, disagreement, follow-up questions, pivots, partnerships, risk discovery, and references to prior discussion.
+- Professional board report after every meeting, including executive summary, startup overview, executive opinions, SWOT, competitors, market analysis, financial analysis, risk matrix, action plan, VC readiness scores, vote detail, and confidence scores.
+- History for previous meetings with search, filters, favorites, compare, report preview, relaunch, delete, and re-download.
+- Export support for PDF, Markdown, and JSON.
+- Dockerized FastAPI, Next.js, PostgreSQL, Redis, and Qdrant stack.
 
-## Milestone 1
+## Stack
 
-Milestone 1 delivers a runnable vertical slice:
+Frontend:
 
-- founder brief intake contract
-- deterministic executive board orchestration
-- 18 executive roles with independent goals, personalities, confidence, dissent, revisions, and votes
-- structured report containing every required Boardroom AI output section
-- FastAPI routes for health, roles, and board meeting generation
-- premium dark-mode Next.js experience wired to the backend API
-- PostgreSQL-only schema design and Alembic migration
-- Docker Compose for PostgreSQL, Redis, Qdrant, backend, and frontend
-- unit tests for board orchestration behavior
+- Next.js 15
+- React 19
+- TypeScript
+- Tailwind CSS
+- Framer Motion
+- Zustand
 
-## Milestone 2
+Backend:
 
-Milestone 2 turns the board from a static simulation into a live meeting:
-
-- WebSocket streaming board meetings at `/api/v1/board-meetings/live`
-- executive status events such as thinking, researching, calculating, and reviewing
-- meeting-scoped executive memory with natural references to earlier arguments
-- provisional votes, final votes, and visible vote changes
-- confidence history with reasons for each change
-- chronological timeline statements with speaker, time, topic, role, confidence, reasoning, and memory references
-- streamed report sections that appear one at a time
-- PostgreSQL persistence for meetings, timeline turns, raw stream events, vote history, confidence history, reports, and reasoning
-- futuristic boardroom UI with executive seats, active speaker animation, live transcript, vote changes, confidence evolution, and streaming report panels
+- FastAPI
+- Python 3.12
+- PostgreSQL
+- Redis
+- Qdrant
+- WebSockets
+- SQLAlchemy and Alembic
 
 ## Quickstart
 
@@ -46,46 +45,76 @@ Copy the environment file:
 Copy-Item .env.example .env
 ```
 
-Start the full stack:
+Start the full containerized stack:
 
 ```powershell
-docker compose up --build
+docker compose up -d
 ```
 
-Or use the local helper:
+For local frontend development:
 
 ```powershell
-.\scripts\dev.ps1
+cd frontend
+npm run dev
 ```
 
-Backend:
-
-```text
-http://localhost:8000
-```
-
-Frontend:
-
-```text
-http://localhost:3000
-```
-
-Run backend tests from `backend/`:
-
-```powershell
-python -m pytest
-```
-
-The local development URLs are:
+Local URLs:
 
 - Frontend: `http://localhost:3000`
 - Backend health: `http://localhost:8000/health`
 - Backend API docs: `http://localhost:8000/docs`
 - Live board WebSocket: `ws://localhost:8000/api/v1/board-meetings/live`
 
-## Engineering Decisions
+## Usage
 
-The first implementation uses a deterministic local AI provider for repeatable offline development and tests. The provider is not mock logic: it evaluates the founder brief through role-specific strategic heuristics, generates disagreement, produces revisions, and computes consensus. The provider abstraction is designed so OpenAI, Claude, Gemini, and Ollama implementations can be added without changing the domain orchestration.
+1. Open the dashboard to review meeting history, approval rate, confidence, reports, and industry activity.
+2. Use Startup Generator to create startup cards from a short prompt or structured inputs.
+3. Launch a board meeting from a generated card, or open Boardroom and submit a manual founder brief.
+4. Watch the live executive discussion, vote changes, confidence evolution, risk signals, and report stream.
+5. Open History to search meetings, favorite startups, compare decisions, preview reports, relaunch a brief, delete history, or export artifacts.
 
-PostgreSQL is the only relational database target. SQLite is intentionally not used in runtime or tests.
+## API Highlights
 
+- `GET /health`
+- `GET /api/v1/executives`
+- `POST /api/v1/startup-ideas/generate`
+- `POST /api/v1/board-meetings`
+- `GET /api/v1/board-meetings`
+- `GET /api/v1/board-meetings/{meeting_id}`
+- `PATCH /api/v1/board-meetings/{meeting_id}/favorite`
+- `DELETE /api/v1/board-meetings/{meeting_id}`
+- `GET /api/v1/dashboard`
+- `GET /api/v1/search?q=...`
+- `GET /api/v1/reports/{meeting_id}/export?format=pdf`
+- `GET /api/v1/reports/{meeting_id}/export?format=markdown`
+- `GET /api/v1/reports/{meeting_id}/export?format=json`
+- `WS /api/v1/board-meetings/live`
+
+## Validation
+
+Backend tests:
+
+```powershell
+cd backend
+python -m pytest
+```
+
+Frontend typecheck:
+
+```powershell
+cd frontend
+npm run typecheck
+```
+
+Production frontend build:
+
+```powershell
+cd frontend
+npm run build
+```
+
+## Engineering Notes
+
+The current AI provider is deterministic by design. It gives repeatable tests and a fully functional offline development flow while preserving the provider abstraction for OpenAI, Claude, Gemini, Ollama, or other model-backed providers.
+
+PostgreSQL remains the system of record for meetings, votes, confidence events, timeline turns, report sections, favorites, and exportable artifacts. Docker Compose remains the default development workflow.
