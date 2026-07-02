@@ -9,55 +9,125 @@ import type {
   StartupIdeaGenerationPayload
 } from "@/lib/types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const API_PREFIX = "/api/v1";
+const DEFAULT_WS_BASE_URL = "ws://localhost:8000";
 
-export async function createBoardMeeting(payload: StartupBriefPayload): Promise<BoardMeetingResult> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/board-meetings`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
+const API_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_API_BASE_URL);
 
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(detail || "Board meeting failed");
+function normalizeBaseUrl(value: string | undefined) {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.replace(/\/+$/, "");
+}
+
+function apiUrl(path: string) {
+  return `${API_BASE_URL}${path}`;
+}
+
+async function requestJson<T>(
+  path: string,
+  init: RequestInit | undefined,
+  context: string
+): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(path), init);
+  } catch (error) {
+    throw new Error(
+      `${context}: unable to reach API at ${apiUrl(path)}${
+        error instanceof Error ? ` (${error.message})` : ""
+      }`
+    );
   }
 
-  return response.json() as Promise<BoardMeetingResult>;
+  if (!response.ok) {
+    throw new Error(
+      `${context}: ${response.status} ${response.statusText}${await errorDetail(response)}`
+    );
+  }
+
+  return response.json() as Promise<T>;
+}
+
+async function requestNoContent(
+  path: string,
+  init: RequestInit | undefined,
+  context: string
+): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(path), init);
+  } catch (error) {
+    throw new Error(
+      `${context}: unable to reach API at ${apiUrl(path)}${
+        error instanceof Error ? ` (${error.message})` : ""
+      }`
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `${context}: ${response.status} ${response.statusText}${await errorDetail(response)}`
+    );
+  }
+}
+
+async function errorDetail(response: Response) {
+  const text = await response.text();
+  if (!text) {
+    return "";
+  }
+
+  try {
+    const data = JSON.parse(text) as { detail?: unknown };
+    if (typeof data.detail === "string") {
+      return ` - ${data.detail}`;
+    }
+  } catch {
+    return ` - ${text}`;
+  }
+
+  return ` - ${text}`;
+}
+
+export async function createBoardMeeting(payload: StartupBriefPayload): Promise<BoardMeetingResult> {
+  return requestJson<BoardMeetingResult>(
+    `${API_PREFIX}/board-meetings`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    },
+    "Board meeting failed"
+  );
 }
 
 export async function generateStartupIdeas(
   payload: StartupIdeaGenerationPayload
 ): Promise<StartupIdea[]> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/startup-ideas/generate`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
+  const data = await requestJson<{ ideas: StartupIdea[] }>(
+    `${API_PREFIX}/startup-ideas/generate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
     },
-    body: JSON.stringify(payload)
-  });
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(detail || "Startup idea generation failed");
-  }
-
-  const data = (await response.json()) as { ideas: StartupIdea[] };
+    "Startup idea generation failed"
+  );
   return data.ideas;
 }
 
 export async function fetchDashboard(): Promise<DashboardSnapshot> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/dashboard`, {
-    cache: "no-store"
-  });
-
-  if (!response.ok) {
-    throw new Error("Dashboard failed to load");
-  }
-
-  return response.json() as Promise<DashboardSnapshot>;
+  return requestJson<DashboardSnapshot>(
+    `${API_PREFIX}/dashboard`,
+    {
+      cache: "no-store"
+    },
+    "Dashboard failed to load"
+  );
 }
 
 export async function fetchMeetings(options?: {
@@ -76,67 +146,59 @@ export async function fetchMeetings(options?: {
     params.set("limit", String(options.limit));
   }
   const suffix = params.toString() ? `?${params.toString()}` : "";
-  const response = await fetch(`${API_BASE_URL}/api/v1/board-meetings${suffix}`, {
-    cache: "no-store"
-  });
-
-  if (!response.ok) {
-    throw new Error("Meeting history failed to load");
-  }
-
-  const data = (await response.json()) as { meetings: MeetingSummary[] };
+  const data = await requestJson<{ meetings: MeetingSummary[] }>(
+    `${API_PREFIX}/board-meetings${suffix}`,
+    {
+      cache: "no-store"
+    },
+    "Meeting history failed to load"
+  );
   return data.meetings;
 }
 
 export async function fetchMeetingDetail(meetingId: string): Promise<BoardMeetingDetail> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/board-meetings/${meetingId}`, {
-    cache: "no-store"
-  });
-
-  if (!response.ok) {
-    throw new Error("Meeting report failed to load");
-  }
-
-  return response.json() as Promise<BoardMeetingDetail>;
+  return requestJson<BoardMeetingDetail>(
+    `${API_PREFIX}/board-meetings/${meetingId}`,
+    {
+      cache: "no-store"
+    },
+    "Meeting report failed to load"
+  );
 }
 
 export async function updateMeetingFavorite(meetingId: string, isFavorite: boolean) {
-  const response = await fetch(`${API_BASE_URL}/api/v1/board-meetings/${meetingId}/favorite`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json"
+  return requestJson<{ meeting_id: string; is_favorite: boolean }>(
+    `${API_PREFIX}/board-meetings/${meetingId}/favorite`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ is_favorite: isFavorite })
     },
-    body: JSON.stringify({ is_favorite: isFavorite })
-  });
-
-  if (!response.ok) {
-    throw new Error("Favorite update failed");
-  }
-
-  return response.json() as Promise<{ meeting_id: string; is_favorite: boolean }>;
+    "Favorite update failed"
+  );
 }
 
 export async function deleteMeeting(meetingId: string) {
-  const response = await fetch(`${API_BASE_URL}/api/v1/board-meetings/${meetingId}`, {
-    method: "DELETE"
-  });
-
-  if (!response.ok) {
-    throw new Error("Meeting delete failed");
-  }
+  await requestNoContent(
+    `${API_PREFIX}/board-meetings/${meetingId}`,
+    {
+      method: "DELETE"
+    },
+    "Meeting delete failed"
+  );
 }
 
 export async function searchEverything(query: string): Promise<GlobalSearchResults> {
   const params = new URLSearchParams({ q: query });
-  const response = await fetch(`${API_BASE_URL}/api/v1/search?${params.toString()}`, {
-    cache: "no-store"
-  });
-
-  if (!response.ok) {
-    throw new Error("Search failed");
-  }
-
-  return response.json() as Promise<GlobalSearchResults>;
+  return requestJson<GlobalSearchResults>(
+    `${API_PREFIX}/search?${params.toString()}`,
+    {
+      cache: "no-store"
+    },
+    "Search failed"
+  );
 }
 
 export function reportExportUrl(
@@ -144,13 +206,36 @@ export function reportExportUrl(
   format: "pdf" | "markdown" | "json" = "pdf"
 ) {
   const params = new URLSearchParams({ format });
-  return `${API_BASE_URL}/api/v1/reports/${meetingId}/export?${params.toString()}`;
+  return apiUrl(`${API_PREFIX}/reports/${meetingId}/export?${params.toString()}`);
 }
 
 export function boardMeetingWebSocketUrl() {
-  const base = new URL(API_BASE_URL);
+  const configuredWsBase = normalizeBaseUrl(process.env.NEXT_PUBLIC_WS_BASE_URL);
+
+  if (configuredWsBase) {
+    return websocketUrlFromBase(configuredWsBase);
+  }
+
+  if (API_BASE_URL) {
+    return websocketUrlFromBase(API_BASE_URL);
+  }
+
+  if (typeof window !== "undefined") {
+    const base = new URL(window.location.origin);
+    if (base.hostname === "localhost" || base.hostname === "127.0.0.1") {
+      base.port = "8000";
+    }
+    return websocketUrlFromBase(base.toString());
+  }
+
+  return websocketUrlFromBase(DEFAULT_WS_BASE_URL);
+}
+
+function websocketUrlFromBase(value: string) {
+  const base =
+    typeof window === "undefined" ? new URL(value) : new URL(value, window.location.origin);
   base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
-  base.pathname = "/api/v1/board-meetings/live";
+  base.pathname = `${API_PREFIX}/board-meetings/live`;
   base.search = "";
   return base.toString();
 }

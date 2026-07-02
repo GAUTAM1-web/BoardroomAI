@@ -29,7 +29,11 @@ class StartupBriefRecord(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    meetings: Mapped[list[BoardMeetingRecord]] = relationship(back_populates="startup_brief")
+    meetings: Mapped[list[BoardMeetingRecord]] = relationship(
+        back_populates="startup_brief",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class BoardMeetingRecord(Base):
@@ -52,15 +56,41 @@ class BoardMeetingRecord(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     startup_brief: Mapped[StartupBriefRecord] = relationship(back_populates="meetings")
-    executives: Mapped[list[ExecutiveAgentRecord]] = relationship(back_populates="board_meeting")
-    turns: Mapped[list[MeetingTurnRecord]] = relationship(back_populates="board_meeting")
-    votes: Mapped[list[BoardVoteRecord]] = relationship(back_populates="board_meeting")
-    vote_events: Mapped[list[VoteEventRecord]] = relationship(back_populates="board_meeting")
-    confidence_events: Mapped[list[ConfidenceEventRecord]] = relationship(
-        back_populates="board_meeting"
+    executives: Mapped[list[ExecutiveAgentRecord]] = relationship(
+        back_populates="board_meeting",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
-    stream_events: Mapped[list[MeetingEventRecord]] = relationship(back_populates="board_meeting")
-    reports: Mapped[list[FinalReportRecord]] = relationship(back_populates="board_meeting")
+    turns: Mapped[list[MeetingTurnRecord]] = relationship(
+        back_populates="board_meeting",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    votes: Mapped[list[BoardVoteRecord]] = relationship(
+        back_populates="board_meeting",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    vote_events: Mapped[list[VoteEventRecord]] = relationship(
+        back_populates="board_meeting",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    confidence_events: Mapped[list[ConfidenceEventRecord]] = relationship(
+        back_populates="board_meeting",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    stream_events: Mapped[list[MeetingEventRecord]] = relationship(
+        back_populates="board_meeting",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    reports: Mapped[list[FinalReportRecord]] = relationship(
+        back_populates="board_meeting",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class ExecutiveAgentRecord(Base):
@@ -191,7 +221,11 @@ class FinalReportRecord(Base):
     )
 
     board_meeting: Mapped[BoardMeetingRecord] = relationship(back_populates="reports")
-    sections: Mapped[list[ReportSectionRecord]] = relationship(back_populates="final_report")
+    sections: Mapped[list[ReportSectionRecord]] = relationship(
+        back_populates="final_report",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class ReportSectionRecord(Base):

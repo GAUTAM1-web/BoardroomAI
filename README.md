@@ -58,12 +58,27 @@ cd frontend
 npm run dev
 ```
 
+For local backend development, use the same root `.env` file. The backend now reads both
+`./.env` and `backend/.env`, so running from either the repo root or `backend/` uses the
+same database settings.
+
 Local URLs:
 
 - Frontend: `http://localhost:3000`
 - Backend health: `http://localhost:8000/health`
 - Backend API docs: `http://localhost:8000/docs`
 - Live board WebSocket: `ws://localhost:8000/api/v1/board-meetings/live`
+
+### API Routing Notes
+
+The frontend supports two HTTP API modes:
+
+- Default local/Docker mode: leave `NEXT_PUBLIC_API_BASE_URL` empty and let Next.js proxy
+  `/api/v1/*` to `API_INTERNAL_BASE_URL`.
+- Direct-browser mode: set `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000` if you want
+  browser requests to bypass the Next.js proxy.
+
+WebSockets use `NEXT_PUBLIC_WS_BASE_URL`, defaulting to `ws://localhost:8000`.
 
 ## Usage
 
@@ -113,8 +128,41 @@ cd frontend
 npm run build
 ```
 
+Frontend lint:
+
+```powershell
+cd frontend
+npm run lint
+```
+
 ## Engineering Notes
 
 The current AI provider is deterministic by design. It gives repeatable tests and a fully functional offline development flow while preserving the provider abstraction for OpenAI, Claude, Gemini, Ollama, or other model-backed providers.
 
 PostgreSQL remains the system of record for meetings, votes, confidence events, timeline turns, report sections, favorites, and exportable artifacts. Docker Compose remains the default development workflow.
+
+## Stabilization Notes
+
+- Fixed dashboard/history API routing ambiguity. Root cause: browser-side `/api/v1/*`
+  requests could hit Next.js instead of FastAPI when the public API base URL was empty
+  or misconfigured. Fix: added a Next.js rewrite proxy and centralized URL construction
+  in `frontend/lib/api.ts`.
+- Fixed opaque frontend API errors. Root cause: failed requests collapsed into generic
+  messages such as "Failed to fetch." Fix: API helpers now include status codes and
+  backend details.
+- Fixed Docker frontend API wiring. Root cause: public browser env vars are build-time
+  values in Next.js, while container-to-container traffic needs the internal `backend`
+  hostname. Fix: Docker build args now separate `API_INTERNAL_BASE_URL` from public
+  browser URLs.
+- Fixed broken frontend lint gate. Root cause: `next lint` is deprecated and prompted
+  interactively. Fix: added `eslint.config.mjs` and switched to `eslint . --max-warnings=0`.
+- Fixed stale typecheck failures. Root cause: TypeScript incremental state could point
+  at generated `.next/types` files. Fix: `npm run typecheck` disables incremental reads.
+- Improved database failure handling. Root cause: asyncpg connection errors could escape
+  as 500 responses. Fix: repository-backed routes return 503 with actionable setup detail.
+- Improved delete reliability. Root cause: ORM relationships did not declare cascade
+  behavior matching the database foreign keys. Fix: added delete-orphan cascade and
+  passive deletes for meeting/report children.
+- Added API contract tests for dashboard, history, favorites, delete, search, and export
+  route methods.
+- No new runtime dependencies were added.
