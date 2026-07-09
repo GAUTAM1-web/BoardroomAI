@@ -10,11 +10,17 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core.config import get_settings
 from app.domain.boardroom.export import report_to_markdown, report_to_pdf
 from app.domain.boardroom.ideas import generate_startup_ideas
 from app.domain.boardroom.orchestrator import BoardMeetingOrchestrator
 from app.domain.boardroom.roles import EXECUTIVE_PROFILES
 from app.domain.boardroom.streaming import LiveBoardMeetingOrchestrator
+from app.domain.business_intelligence.service import (
+    build_board_review,
+    build_business_analysis,
+    provider_status,
+)
 from app.infrastructure.ai.local_provider import LocalExecutiveIntelligenceProvider
 from app.infrastructure.database.repositories import PostgresMeetingRepository
 from app.infrastructure.database.session import AsyncSessionLocal
@@ -31,6 +37,15 @@ from app.schemas.boardroom import (
     StartupBriefRequest,
     StartupIdeaGenerationRequest,
     StartupIdeasResponse,
+)
+from app.schemas.business import (
+    BusinessAnalysisListResponse,
+    BusinessAnalysisRequest,
+    BusinessAnalysisResponse,
+    BusinessBoardReviewResponse,
+    BusinessPerformanceEntryRequest,
+    BusinessPerformanceEntryResponse,
+    BusinessProviderStatusResponse,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["boardroom"])
@@ -140,6 +155,113 @@ async def global_search(
     )
 
 
+@router.get("/business-data/providers", response_model=BusinessProviderStatusResponse)
+async def business_provider_status() -> BusinessProviderStatusResponse:
+    return BusinessProviderStatusResponse.model_validate(provider_status(get_settings()))
+
+
+@router.post("/business-analyses", response_model=BusinessAnalysisResponse)
+async def create_business_analysis(payload: BusinessAnalysisRequest) -> BusinessAnalysisResponse:
+    result = build_business_analysis(payload, settings=get_settings())
+    await with_repository(
+        lambda repository: repository.persist_business_analysis(
+            payload.model_dump(mode="json"),
+            result,
+        )
+    )
+    return BusinessAnalysisResponse.model_validate(result)
+
+
+@router.get("/business-analyses", response_model=BusinessAnalysisListResponse)
+async def list_business_analyses(
+    limit: int = Query(default=30, ge=1, le=100),
+) -> BusinessAnalysisListResponse:
+    analyses = await with_repository(lambda repository: repository.list_business_analyses(limit))
+    return BusinessAnalysisListResponse.model_validate({"analyses": analyses})
+
+
+@router.get("/business-analyses/{analysis_id}", response_model=BusinessAnalysisResponse)
+async def get_business_analysis(analysis_id: UUID) -> BusinessAnalysisResponse:
+    analysis = await with_repository(
+        lambda repository: repository.get_business_analysis(analysis_id)
+    )
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="Business analysis not found")
+    return BusinessAnalysisResponse.model_validate(analysis)
+
+
+@router.get("/business-analyses/{analysis_id}/export")
+async def export_business_analysis(
+    analysis_id: UUID,
+    format: Literal["json", "markdown", "pdf"] = Query(default="pdf"),
+) -> Response:
+    analysis = await with_repository(
+        lambda repository: repository.get_business_analysis(analysis_id)
+    )
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="Business analysis not found")
+
+    filename_base = f"business-decision-brief-{analysis_id}"
+    if format == "json":
+        return JSONResponse(
+            content=analysis,
+            headers={"Content-Disposition": f'attachment; filename="{filename_base}.json"'},
+        )
+
+    export_payload = _business_export_payload(analysis)
+    if format == "markdown":
+        return PlainTextResponse(
+            report_to_markdown(export_payload),
+            media_type="text/markdown",
+            headers={"Content-Disposition": f'attachment; filename="{filename_base}.md"'},
+        )
+    return Response(
+        content=report_to_pdf(export_payload),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename_base}.pdf"'},
+    )
+
+
+@router.post(
+    "/business-analyses/{analysis_id}/performance-entries",
+    response_model=BusinessPerformanceEntryResponse,
+)
+async def record_business_performance_entry(
+    analysis_id: UUID,
+    payload: BusinessPerformanceEntryRequest,
+) -> BusinessPerformanceEntryResponse:
+    entry = await with_repository(
+        lambda repository: repository.record_business_performance_entry(
+            analysis_id,
+            payload.model_dump(mode="json"),
+        )
+    )
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Business analysis not found")
+    return BusinessPerformanceEntryResponse.model_validate(entry)
+
+
+@router.post(
+    "/business-analyses/{analysis_id}/board-review",
+    response_model=BusinessBoardReviewResponse,
+)
+async def create_business_board_review(analysis_id: UUID) -> BusinessBoardReviewResponse:
+    analysis = await with_repository(
+        lambda repository: repository.get_business_analysis(analysis_id)
+    )
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="Business analysis not found")
+    performance_entries = await with_repository(
+        lambda repository: repository.list_business_performance_entries(analysis_id)
+    )
+    if performance_entries is None:
+        raise HTTPException(status_code=404, detail="Business analysis not found")
+    entries = [
+        BusinessPerformanceEntryRequest.model_validate(entry) for entry in performance_entries
+    ]
+    return BusinessBoardReviewResponse.model_validate(build_board_review(analysis, entries))
+
+
 @router.get("/reports/{meeting_id}/export")
 async def export_report(
     meeting_id: UUID,
@@ -166,6 +288,26 @@ async def export_report(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename_base}.pdf"'},
     )
+
+
+def _business_export_payload(analysis: dict[str, object]) -> dict[str, object]:
+    report = analysis["report"]
+    intake = analysis["intake"]
+    score = analysis["opportunity_score"]
+    return {
+        "meeting_id": analysis["analysis_id"],
+        "aggregate_confidence": float(score["score"]) / 100,
+        "report": report,
+        "startup_brief": {
+            "startup_idea": intake["business_idea"],
+            "industry": intake["business_category"],
+            "country": (
+                analysis.get("board_brief", {}).get("country")
+                if isinstance(analysis.get("board_brief"), dict)
+                else "Unknown"
+            ),
+        },
+    }
 
 
 @router.websocket("/board-meetings/live")

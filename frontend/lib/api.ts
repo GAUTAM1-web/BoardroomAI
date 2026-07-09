@@ -1,6 +1,10 @@
 import type {
   BoardMeetingDetail,
   BoardMeetingResult,
+  BusinessAnalysisPayload,
+  BusinessAnalysisResult,
+  BusinessAnalysisSummary,
+  BusinessProviderStatus,
   DashboardSnapshot,
   GlobalSearchResults,
   MeetingSummary,
@@ -199,6 +203,63 @@ export async function searchEverything(query: string): Promise<GlobalSearchResul
     },
     "Search failed"
   );
+}
+
+export async function fetchBusinessProviderStatus(): Promise<BusinessProviderStatus> {
+  return requestJson<BusinessProviderStatus>(
+    `${API_PREFIX}/business-data/providers`,
+    {
+      cache: "no-store"
+    },
+    "Business data provider status failed to load"
+  );
+}
+
+export async function analyzeBusiness(
+  payload: BusinessAnalysisPayload
+): Promise<BusinessAnalysisResult> {
+  return requestJson<BusinessAnalysisResult>(
+    `${API_PREFIX}/business-analyses`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    },
+    "Business analysis failed"
+  );
+}
+
+export async function fetchBusinessAnalyses(): Promise<BusinessAnalysisSummary[]> {
+  const data = await requestJson<{ analyses: BusinessAnalysisSummary[] }>(
+    `${API_PREFIX}/business-analyses`,
+    {
+      cache: "no-store"
+    },
+    "Business analysis history failed to load"
+  );
+  return data.analyses;
+}
+
+export async function fetchBusinessAnalysisDetail(
+  analysisId: string
+): Promise<BusinessAnalysisResult> {
+  return requestJson<BusinessAnalysisResult>(
+    `${API_PREFIX}/business-analyses/${analysisId}`,
+    {
+      cache: "no-store"
+    },
+    "Business decision brief failed to load"
+  );
+}
+
+export function businessAnalysisExportUrl(
+  analysisId: string,
+  format: "pdf" | "markdown" | "json" = "pdf"
+) {
+  const params = new URLSearchParams({ format });
+  return apiUrl(`${API_PREFIX}/business-analyses/${analysisId}/export?${params.toString()}`);
 }
 
 export function reportExportUrl(

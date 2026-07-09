@@ -4,6 +4,8 @@
 
 Boardroom AI turns a founder's startup brief into an executive board meeting. The system should feel like an operating system for founders: focused, fast, serious, visually premium, and useful beyond a chat transcript.
 
+Milestone 5 extends that intent beyond startup reports into evidence-based business decisions: discover, compare, validate, plan, launch, track, improve, and decide whether to expand, pivot, or exit.
+
 ## System Boundaries
 
 ```text
@@ -11,6 +13,7 @@ Founder UI
   -> Next.js application
   -> FastAPI API gateway
   -> Boardroom domain orchestration
+  -> Business intelligence domain services
   -> AI provider abstraction
   -> PostgreSQL system of record
   -> Redis event/cache layer
@@ -25,6 +28,8 @@ backend/
     api/                  HTTP routes and dependency wiring
     core/                 configuration, logging, app lifecycle
     domain/boardroom/     clean domain model and orchestration
+    domain/business_intelligence/
+                          evidence, location, supplier, finance, and validation services
     infrastructure/       database and provider adapters
     schemas/              request and response DTOs
   alembic/                PostgreSQL migrations
@@ -51,6 +56,9 @@ Domain responsibilities:
 - score market, financial, operational, legal, growth, and technology risk
 - run proposal, critique, revision, and consensus phases
 - produce a structured board report
+- produce local-business decision briefs from evidence, user inputs, and labeled assumptions
+- calculate Opportunity Score, procurement needs, setup cost, daily-sales targets, and validation tasks
+- distinguish verified facts, user-provided information, configurable benchmarks, assumptions, unknowns, and demo-only scaffolding
 
 Application/API responsibilities:
 
@@ -85,6 +93,13 @@ Future provider routing:
 - Claude for long-context report generation and legal-style critique
 - Gemini for research-assisted market analysis
 - Ollama for private local deployments
+
+Business-data provider routing:
+
+- `demo` mode for labeled benchmark scaffolding; it must never be shown as live evidence
+- `manual` mode for user-entered competitors, suppliers, quotations, observations, costs, and properties
+- `live` mode for future map/place/search providers through backend-only credentials
+- provider failures return actionable warnings and do not block manual analysis
 
 ## Executive Agents
 
@@ -127,12 +142,18 @@ Core tables:
 - `board_votes` - final vote per executive
 - `final_reports` - report metadata and final consensus
 - `report_sections` - normalized report sections for export, retrieval, and revision
+- `business_analyses` - persisted decision briefs, request payloads, and calculated results
+- `business_evidence_records` - reusable evidence records with source, retrieval time, confidence, and verification status
+- `saved_suppliers` - saved/manual suppliers and supplier comparison data
+- `business_validation_tasks` - pre-launch validation tasks and outcomes
+- `business_performance_entries` - actual operating performance for forecast-versus-actual review
 
 Important relationships:
 
 - one `startup_brief` has many `board_meetings`
 - one `board_meeting` has many `meeting_turns`, `board_votes`, and `final_reports`
 - one `final_report` has many `report_sections`
+- one `business_analysis` has many evidence records, saved suppliers, validation tasks, and performance entries
 
 ## API Design
 
@@ -152,6 +173,13 @@ Milestone 1 routes:
 - `DELETE /api/v1/board-meetings/{id}` - delete a meeting history item
 - `GET /api/v1/search` - global search across meetings, reports, and executives
 - `GET /api/v1/reports/{id}/export` - export PDF, Markdown, or JSON
+- `GET /api/v1/business-data/providers` - business data/provider status
+- `POST /api/v1/business-analyses` - create an evidence-based decision brief
+- `GET /api/v1/business-analyses` - list saved decision briefs
+- `GET /api/v1/business-analyses/{id}` - read a decision brief
+- `GET /api/v1/business-analyses/{id}/export` - export PDF, Markdown, or JSON
+- `POST /api/v1/business-analyses/{id}/performance-entries` - record actual business performance
+- `POST /api/v1/business-analyses/{id}/board-review` - summarize forecast-versus-actual performance
 
 ## Milestone Roadmap
 
@@ -172,23 +200,29 @@ Milestone 1 routes:
    - professional report sections, VC readiness scoring, and PDF/Markdown/JSON exports
    - favorites and delete history
 
-4. **LLM Provider Router**
+4. **Evidence-Based Business Intelligence**
+   - simple guided intake for ordinary business owners
+   - optional location permission and manual/map-pin location selection
+   - evidence records, competitors, suppliers, procurement, finance, daily-sales targets
+   - validation tasks, business analysis persistence, exports, and board-ready briefs
+
+5. **LLM Provider Router**
    - OpenAI, Claude, Gemini, and Ollama adapters
    - provider fallback strategy
    - token/cost telemetry
    - prompt versioning and evaluation fixtures
 
-5. **Strategic Memory and Research**
+6. **Strategic Memory and Research**
    - Qdrant collections for market memory, competitor dossiers, and founder history
    - retrieval-augmented market analysis
    - source attribution and confidence calibration
 
-6. **Investor-Grade Artifact Suite**
+7. **Investor-Grade Artifact Suite**
    - pitch deck outline and slide generation
    - financial forecast modeling
    - deeper board decision history
 
-7. **Production Platform**
+8. **Production Platform**
    - organization accounts
    - audit logs
    - billing boundaries

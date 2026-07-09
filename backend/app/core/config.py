@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
     qdrant_url: str = Field(default="http://localhost:6333", alias="QDRANT_URL")
     ai_provider: str = Field(default="local", alias="AI_PROVIDER")
+    business_data_mode: str = Field(default="demo", alias="BUSINESS_DATA_MODE")
+    maps_provider: str = Field(default="none", alias="MAPS_PROVIDER")
+    maps_api_key: str = Field(default="", alias="MAPS_API_KEY")
+    places_api_key: str = Field(default="", alias="PLACES_API_KEY")
     cors_origins: list[str] = Field(
         default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"]
     )

@@ -21,12 +21,17 @@ from app.domain.boardroom.streaming import REPORT_SECTION_TITLES, BoardroomStrea
 from app.infrastructure.database.models import (
     BoardMeetingRecord,
     BoardVoteRecord,
+    BusinessAnalysisRecord,
+    BusinessEvidenceRecord,
+    BusinessPerformanceEntryRecord,
+    BusinessValidationTaskRecord,
     ConfidenceEventRecord,
     ExecutiveAgentRecord,
     FinalReportRecord,
     MeetingEventRecord,
     MeetingTurnRecord,
     ReportSectionRecord,
+    SavedSupplierRecord,
     StartupBriefRecord,
     VoteEventRecord,
 )
@@ -394,6 +399,184 @@ class PostgresMeetingRepository:
         ][:limit]
         return {"query": query, "meetings": meetings, "reports": reports, "executives": executives}
 
+    async def persist_business_analysis(
+        self,
+        request_payload: dict[str, object],
+        result: dict[str, object],
+    ) -> None:
+        analysis_id = UUID(str(result["analysis_id"]))
+        intake = result["intake"]
+        recommendation = result["recommendation"]
+        opportunity_score = result["opportunity_score"]
+        record = BusinessAnalysisRecord(
+            id=analysis_id,
+            workflow_type=str(intake["workflow_type"]),
+            business_idea=str(intake["business_idea"]),
+            business_category=str(intake["business_category"]),
+            location_label=str(intake["location_label"]),
+            budget=(Decimal(str(intake["budget"])) if intake.get("budget") is not None else None),
+            data_mode=str(result["data_mode"]),
+            provider_label=str(result["provider_label"]),
+            recommendation_label=str(recommendation["label"]),
+            opportunity_score=int(opportunity_score["score"]),
+            evidence_confidence=str(result["evidence_confidence"]),
+            request_payload=request_payload,
+            result=result,
+        )
+        self.session.add(record)
+
+        for evidence in result.get("evidence", []):
+            if not isinstance(evidence, dict):
+                continue
+            self.session.add(
+                BusinessEvidenceRecord(
+                    id=UUID(str(evidence["id"])),
+                    analysis_id=analysis_id,
+                    claim=str(evidence["claim"]),
+                    source_name=str(evidence["source_name"]),
+                    source_url=(
+                        str(evidence["source_url"])
+                        if evidence.get("source_url") is not None
+                        else None
+                    ),
+                    source_type=str(evidence["source_type"]),
+                    retrieval_time=_parse_datetime(str(evidence["retrieval_time"])),
+                    location=evidence.get("location"),
+                    value=evidence.get("value"),
+                    confidence=str(evidence["confidence"]),
+                    verification_status=str(evidence["verification_status"]),
+                    freshness=str(evidence["freshness"]),
+                    notes=str(evidence["notes"]) if evidence.get("notes") is not None else None,
+                    tags=list(evidence.get("tags") or []),
+                )
+            )
+
+        for supplier in result.get("suppliers", []):
+            if not isinstance(supplier, dict):
+                continue
+            self.session.add(
+                SavedSupplierRecord(
+                    analysis_id=analysis_id,
+                    name=str(supplier["name"]),
+                    category=(
+                        str(supplier["category"]) if supplier.get("category") is not None else None
+                    ),
+                    location_label=(
+                        str(supplier["location"]) if supplier.get("location") is not None else None
+                    ),
+                    distance_km=(
+                        Decimal(str(supplier["distance_km"]))
+                        if supplier.get("distance_km") is not None
+                        else None
+                    ),
+                    verification_status=str(supplier["verification_status"]),
+                    contact_status=(
+                        str(supplier["contact_status"])
+                        if supplier.get("contact_status") is not None
+                        else None
+                    ),
+                    is_preferred=bool(supplier.get("is_preferred", False)),
+                    supplier_data=supplier,
+                )
+            )
+
+        for task in result.get("validation_plan", []):
+            if not isinstance(task, dict):
+                continue
+            self.session.add(
+                BusinessValidationTaskRecord(
+                    analysis_id=analysis_id,
+                    task=str(task["task"]),
+                    owner=str(task["owner"]) if task.get("owner") is not None else None,
+                    due_date=str(task["due_date"]) if task.get("due_date") is not None else None,
+                    cost=str(task["cost"]) if task.get("cost") is not None else None,
+                    expected_evidence=(
+                        str(task["expected_evidence"])
+                        if task.get("expected_evidence") is not None
+                        else None
+                    ),
+                    result=str(task["result"]) if task.get("result") is not None else None,
+                    outcome=str(task["outcome"]) if task.get("outcome") is not None else None,
+                    effect_on_confidence=(
+                        str(task["effect_on_confidence"])
+                        if task.get("effect_on_confidence") is not None
+                        else None
+                    ),
+                    status="open",
+                )
+            )
+        await self.session.commit()
+
+    async def list_business_analyses(self, limit: int = 30) -> list[dict[str, object]]:
+        stmt = (
+            select(BusinessAnalysisRecord)
+            .order_by(BusinessAnalysisRecord.created_at.desc())
+            .limit(limit)
+        )
+        records = (await self.session.scalars(stmt)).all()
+        return [self._business_analysis_summary(record) for record in records]
+
+    async def get_business_analysis(self, analysis_id: UUID) -> dict[str, object] | None:
+        record = await self.session.scalar(
+            select(BusinessAnalysisRecord)
+            .where(BusinessAnalysisRecord.id == analysis_id)
+            .options(selectinload(BusinessAnalysisRecord.performance_entries))
+        )
+        if record is None:
+            return None
+        return {
+            **record.result,
+            "created_at": _iso(record.created_at),
+            "performance_entries": [
+                self._performance_entry_dict(entry)
+                for entry in sorted(record.performance_entries, key=lambda item: item.created_at)
+            ],
+        }
+
+    async def record_business_performance_entry(
+        self,
+        analysis_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object] | None:
+        analysis = await self.session.get(BusinessAnalysisRecord, analysis_id)
+        if analysis is None:
+            return None
+        entry = BusinessPerformanceEntryRecord(
+            analysis_id=analysis_id,
+            period_label=str(payload["period_label"]),
+            revenue=(
+                Decimal(str(payload["revenue"])) if payload.get("revenue") is not None else None
+            ),
+            expenses=(
+                Decimal(str(payload["expenses"])) if payload.get("expenses") is not None else None
+            ),
+            customers=(int(payload["customers"]) if payload.get("customers") is not None else None),
+            transactions=(
+                int(payload["transactions"]) if payload.get("transactions") is not None else None
+            ),
+            performance_data=payload,
+        )
+        self.session.add(entry)
+        await self.session.commit()
+        await self.session.refresh(entry)
+        return self._performance_entry_dict(entry)
+
+    async def list_business_performance_entries(
+        self,
+        analysis_id: UUID,
+    ) -> list[dict[str, object]] | None:
+        analysis = await self.session.get(BusinessAnalysisRecord, analysis_id)
+        if analysis is None:
+            return None
+        records = (
+            await self.session.scalars(
+                select(BusinessPerformanceEntryRecord)
+                .where(BusinessPerformanceEntryRecord.analysis_id == analysis_id)
+                .order_by(BusinessPerformanceEntryRecord.created_at.asc())
+            )
+        ).all()
+        return [self._performance_entry_dict(record) for record in records]
+
     async def _update_phase(self, meeting_id: UUID, event_type: str) -> None:
         meeting = await self.session.get(BoardMeetingRecord, meeting_id)
         if meeting is not None:
@@ -438,9 +621,7 @@ class PostgresMeetingRepository:
             "votes": [self._vote_dict(vote) for vote in record.votes],
             "report": {
                 "title": (
-                    report.title
-                    if report
-                    else f"Board Report: {record.startup_brief.startup_idea}"
+                    report.title if report else f"Board Report: {record.startup_brief.startup_idea}"
                 ),
                 "decision": report.decision if report else record.decision,
                 "sections": sections,
@@ -495,8 +676,44 @@ class PostgresMeetingRepository:
             "rationale": record.rationale,
         }
 
+    def _business_analysis_summary(self, record: BusinessAnalysisRecord) -> dict[str, object]:
+        return {
+            "analysis_id": str(record.id),
+            "business_idea": record.business_idea,
+            "business_category": record.business_category,
+            "location_label": record.location_label,
+            "recommendation_label": record.recommendation_label,
+            "opportunity_score": record.opportunity_score,
+            "evidence_confidence": record.evidence_confidence,
+            "data_mode": record.data_mode,
+            "created_at": _iso(record.created_at),
+        }
+
+    def _performance_entry_dict(
+        self,
+        record: BusinessPerformanceEntryRecord,
+    ) -> dict[str, object]:
+        return {
+            **record.performance_data,
+            "entry_id": str(record.id),
+            "analysis_id": str(record.analysis_id),
+            "period_label": record.period_label,
+            "revenue": float(record.revenue) if record.revenue is not None else None,
+            "expenses": float(record.expenses) if record.expenses is not None else None,
+            "customers": record.customers,
+            "transactions": record.transactions,
+            "created_at": _iso(record.created_at),
+        }
+
 
 def _iso(value: datetime | None) -> str | None:
     if value is None:
         return None
     return value.isoformat()
+
+
+def _parse_datetime(value: str) -> datetime:
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.now(UTC)

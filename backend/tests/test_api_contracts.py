@@ -21,3 +21,16 @@ def test_history_workflow_routes_match_frontend_methods() -> None:
     assert "delete" in paths["/api/v1/board-meetings/{meeting_id}"]
     assert "get" in paths["/api/v1/search"]
     assert "get" in paths["/api/v1/reports/{meeting_id}/export"]
+
+
+def test_business_intelligence_routes_are_registered() -> None:
+    schema = create_app().openapi()
+    paths = schema["paths"]
+
+    assert "get" in paths["/api/v1/business-data/providers"]
+    assert "post" in paths["/api/v1/business-analyses"]
+    assert "get" in paths["/api/v1/business-analyses"]
+    assert "get" in paths["/api/v1/business-analyses/{analysis_id}"]
+    assert "get" in paths["/api/v1/business-analyses/{analysis_id}/export"]
+    assert "post" in paths["/api/v1/business-analyses/{analysis_id}/performance-entries"]
+    assert "post" in paths["/api/v1/business-analyses/{analysis_id}/board-review"]

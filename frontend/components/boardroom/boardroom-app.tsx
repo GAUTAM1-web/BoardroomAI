@@ -6,6 +6,7 @@ import {
   BarChart3,
   Bookmark,
   BookmarkCheck,
+  BriefcaseBusiness,
   CheckCircle2,
   CircleAlert,
   CircleDotDashed,
@@ -70,13 +71,14 @@ import { useBoardroomStore } from "@/store/use-boardroom-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { BusinessDecisionWorkspace } from "@/components/boardroom/business-decision-workspace";
 
 type BriefFormState = StartupBriefPayload & {
   competitorsText: string;
 };
 
 type LiveStatus = "idle" | "connecting" | "running" | "completed" | "error";
-type AppView = "dashboard" | "ideas" | "meeting" | "history";
+type AppView = "dashboard" | "decide" | "ideas" | "meeting" | "history";
 
 type LiveMeetingState = {
   status: LiveStatus;
@@ -415,6 +417,9 @@ export function BoardroomApp() {
               <NavButton active={view === "dashboard"} icon={BarChart3} onClick={() => setView("dashboard")}>
                 Dashboard
               </NavButton>
+              <NavButton active={view === "decide"} icon={BriefcaseBusiness} onClick={() => setView("decide")}>
+                Decide
+              </NavButton>
               <NavButton active={view === "ideas"} icon={Sparkles} onClick={() => setView("ideas")}>
                 Ideas
               </NavButton>
@@ -495,6 +500,10 @@ export function BoardroomApp() {
               onSubmit={handleGenerateIdeas}
               onStart={startLiveMeeting}
             />
+          ) : null}
+
+          {view === "decide" ? (
+            <BusinessDecisionWorkspace onStartBoardMeeting={startLiveMeeting} />
           ) : null}
 
           {view === "meeting" ? (

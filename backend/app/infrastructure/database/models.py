@@ -241,3 +241,141 @@ class ReportSectionRecord(Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False)
 
     final_report: Mapped[FinalReportRecord] = relationship(back_populates="sections")
+
+
+class BusinessAnalysisRecord(Base):
+    __tablename__ = "business_analyses"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    workflow_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    business_idea: Mapped[str] = mapped_column(Text, nullable=False)
+    business_category: Mapped[str] = mapped_column(String(160), nullable=False)
+    location_label: Mapped[str] = mapped_column(String(300), nullable=False)
+    budget: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    data_mode: Mapped[str] = mapped_column(String(40), nullable=False)
+    provider_label: Mapped[str] = mapped_column(String(220), nullable=False)
+    recommendation_label: Mapped[str] = mapped_column(String(120), nullable=False)
+    opportunity_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    evidence_confidence: Mapped[str] = mapped_column(String(40), nullable=False)
+    request_payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    result: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    evidence_records: Mapped[list[BusinessEvidenceRecord]] = relationship(
+        back_populates="analysis",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    saved_suppliers: Mapped[list[SavedSupplierRecord]] = relationship(
+        back_populates="analysis",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    validation_tasks: Mapped[list[BusinessValidationTaskRecord]] = relationship(
+        back_populates="analysis",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    performance_entries: Mapped[list[BusinessPerformanceEntryRecord]] = relationship(
+        back_populates="analysis",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class BusinessEvidenceRecord(Base):
+    __tablename__ = "business_evidence_records"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    analysis_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("business_analyses.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    claim: Mapped[str] = mapped_column(Text, nullable=False)
+    source_name: Mapped[str] = mapped_column(String(220), nullable=False)
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    retrieval_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    location: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    value: Mapped[object | None] = mapped_column(JSONB, nullable=True)
+    confidence: Mapped[str] = mapped_column(String(40), nullable=False)
+    verification_status: Mapped[str] = mapped_column(String(80), nullable=False)
+    freshness: Mapped[str] = mapped_column(String(80), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+
+    analysis: Mapped[BusinessAnalysisRecord] = relationship(back_populates="evidence_records")
+
+
+class SavedSupplierRecord(Base):
+    __tablename__ = "saved_suppliers"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    analysis_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("business_analyses.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    category: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    location_label: Mapped[str | None] = mapped_column(String(220), nullable=True)
+    distance_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    verification_status: Mapped[str] = mapped_column(String(80), nullable=False)
+    contact_status: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    is_preferred: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    supplier_data: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    analysis: Mapped[BusinessAnalysisRecord] = relationship(back_populates="saved_suppliers")
+
+
+class BusinessValidationTaskRecord(Base):
+    __tablename__ = "business_validation_tasks"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    analysis_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("business_analyses.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    task: Mapped[str] = mapped_column(Text, nullable=False)
+    owner: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    due_date: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    cost: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    expected_evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    outcome: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    effect_on_confidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(60), nullable=False, default="open")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    analysis: Mapped[BusinessAnalysisRecord] = relationship(back_populates="validation_tasks")
+
+
+class BusinessPerformanceEntryRecord(Base):
+    __tablename__ = "business_performance_entries"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    analysis_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("business_analyses.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    period_label: Mapped[str] = mapped_column(String(120), nullable=False)
+    revenue: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    expenses: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    customers: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    transactions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    performance_data: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    analysis: Mapped[BusinessAnalysisRecord] = relationship(back_populates="performance_entries")

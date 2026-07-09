@@ -41,6 +41,10 @@ services:
       DATABASE_URL: postgresql+asyncpg://boardroom:boardroom_dev_password@postgres:5432/boardroom_ai
       REDIS_URL: redis://redis:6379/0
       QDRANT_URL: http://qdrant:6333
+      BUSINESS_DATA_MODE: ${BUSINESS_DATA_MODE:-demo}
+      MAPS_PROVIDER: ${MAPS_PROVIDER:-none}
+      MAPS_API_KEY: ${MAPS_API_KEY:-}
+      PLACES_API_KEY: ${PLACES_API_KEY:-}
     ports:
       - "8000:8000"
     depends_on:

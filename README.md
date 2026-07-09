@@ -2,11 +2,13 @@
 
 Boardroom AI is an AI-powered operating system for founders. It turns a startup brief into a live executive board meeting, streams the debate over WebSockets, persists the meeting to PostgreSQL, and generates investor-grade reports with PDF, Markdown, and JSON exports.
 
+Milestone 5 expands the product into an evidence-based business decision platform for technology startups, local businesses, service businesses, shop/location evaluation, supplier planning, validation, and post-launch performance review.
+
 ## Current Capabilities
 
 - Premium founder dashboard with recent meetings, reports, generated ideas, board decisions, approval rate, average confidence, top industries, filters, and global search.
 - AI startup idea generator with interests, industry, country, budget, business model, funding stage, and idea count controls.
-- Startup idea cards with name, tagline, problem, solution, audience, revenue model, startup cost, TAM, innovation, scalability, difficulty, advantage, and success probability.
+- Startup idea cards with name, tagline, problem, solution, audience, revenue model, startup cost, TAM, innovation, scalability, difficulty, advantage, and a legacy heuristic score that is not a guarantee.
 - One-click launch from a generated idea into a live board meeting.
 - Manual founder brief creation remains available.
 - Live boardroom with 18 executive roles, active speaker indicators, status animation, confidence changes, vote changes, timeline, risk signals, and streamed report sections.
@@ -14,6 +16,11 @@ Boardroom AI is an AI-powered operating system for founders. It turns a startup 
 - Professional board report after every meeting, including executive summary, startup overview, executive opinions, SWOT, competitors, market analysis, financial analysis, risk matrix, action plan, VC readiness scores, vote detail, and confidence scores.
 - History for previous meetings with search, filters, favorites, compare, report preview, relaunch, delete, and re-download.
 - Export support for PDF, Markdown, and JSON.
+- Evidence-based "Decide" workspace for local shops, service businesses, existing businesses, candidate properties, and startup concepts.
+- Optional location flow with manual entry, current-location permission only after user action, map-pin coordinate support, and no background tracking.
+- Manual/demo/live provider modes for competitors, suppliers, locations, and evidence. Demo mode is labeled `Demo data - not live local evidence`.
+- Explainable Opportunity Score, supplier/procurement plan, opening inventory, editable finance assumptions, daily-sales targets, validation plan, and board-ready brief.
+- Business analysis history, evidence records, saved suppliers, validation tasks, performance entries, and weekly board-review scaffolding.
 - Dockerized FastAPI, Next.js, PostgreSQL, Redis, and Qdrant stack.
 
 ## Stack
@@ -80,13 +87,33 @@ The frontend supports two HTTP API modes:
 
 WebSockets use `NEXT_PUBLIC_WS_BASE_URL`, defaulting to `ws://localhost:8000`.
 
+### Business Evidence Provider Notes
+
+The business-intelligence workflow supports three data modes:
+
+- `demo`: uses labeled benchmark scaffolding only and returns `Demo data - not live local evidence`.
+- `manual`: uses competitors, suppliers, quotations, observations, locations, and costs entered by the user.
+- `live`: reserved for configured provider credentials; if credentials are missing, the API returns actionable warnings instead of fake listings.
+
+Environment variables:
+
+```text
+BUSINESS_DATA_MODE=demo
+MAPS_PROVIDER=none
+MAPS_API_KEY=
+PLACES_API_KEY=
+```
+
+Provider secrets stay on the backend. The frontend never needs map or place-search API keys.
+
 ## Usage
 
 1. Open the dashboard to review meeting history, approval rate, confidence, reports, and industry activity.
 2. Use Startup Generator to create startup cards from a short prompt or structured inputs.
-3. Launch a board meeting from a generated card, or open Boardroom and submit a manual founder brief.
-4. Watch the live executive discussion, vote changes, confidence evolution, risk signals, and report stream.
-5. Open History to search meetings, favorite startups, compare decisions, preview reports, relaunch a brief, delete history, or export artifacts.
+3. Open Decide to analyze a local business, shop/property, service business, operating business, or technology startup using evidence and assumptions.
+4. Launch a board meeting from a generated card or evidence brief, or open Boardroom and submit a manual founder brief.
+5. Watch the live executive discussion, vote changes, confidence evolution, risk signals, and report stream.
+6. Open History to search meetings, favorite startups, compare decisions, preview reports, relaunch a brief, delete history, or export artifacts.
 
 ## API Highlights
 
@@ -100,6 +127,13 @@ WebSockets use `NEXT_PUBLIC_WS_BASE_URL`, defaulting to `ws://localhost:8000`.
 - `DELETE /api/v1/board-meetings/{meeting_id}`
 - `GET /api/v1/dashboard`
 - `GET /api/v1/search?q=...`
+- `GET /api/v1/business-data/providers`
+- `POST /api/v1/business-analyses`
+- `GET /api/v1/business-analyses`
+- `GET /api/v1/business-analyses/{analysis_id}`
+- `GET /api/v1/business-analyses/{analysis_id}/export?format=pdf`
+- `POST /api/v1/business-analyses/{analysis_id}/performance-entries`
+- `POST /api/v1/business-analyses/{analysis_id}/board-review`
 - `GET /api/v1/reports/{meeting_id}/export?format=pdf`
 - `GET /api/v1/reports/{meeting_id}/export?format=markdown`
 - `GET /api/v1/reports/{meeting_id}/export?format=json`
@@ -139,7 +173,9 @@ npm run lint
 
 The current AI provider is deterministic by design. It gives repeatable tests and a fully functional offline development flow while preserving the provider abstraction for OpenAI, Claude, Gemini, Ollama, or other model-backed providers.
 
-PostgreSQL remains the system of record for meetings, votes, confidence events, timeline turns, report sections, favorites, and exportable artifacts. Docker Compose remains the default development workflow.
+Business intelligence follows the same offline-first rule. Demo mode is clearly labeled, manual mode uses user-entered evidence, and live-provider mode requires backend environment credentials. No provider API keys are exposed in frontend code.
+
+PostgreSQL remains the system of record for meetings, votes, confidence events, timeline turns, report sections, favorites, business analyses, evidence records, suppliers, validation tasks, performance entries, and exportable artifacts. Docker Compose remains the default development workflow.
 
 ## Stabilization Notes
 

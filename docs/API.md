@@ -94,6 +94,8 @@ The response includes:
 
 The report includes executive summary, startup overview, executive opinions, market analysis, competitor analysis, SWOT, financial analysis, risk matrix, action plan, VC readiness score, board vote, confidence scores, and the original Milestone 1 operating sections.
 
+The legacy startup idea field `success_probability` is kept for backward compatibility. Treat it as a heuristic score, not a guarantee of business success.
+
 ## WebSocket /api/v1/board-meetings/live
 
 Starts a live persisted board meeting. The client connects, then sends the same founder brief JSON used by `POST /api/v1/board-meetings` as the first WebSocket message.
@@ -137,6 +139,136 @@ Returns dashboard statistics:
 - recent meetings
 - recent reports
 - recent board decisions
+
+## GET /api/v1/business-data/providers
+
+Returns configured provider mode, map provider name, whether live map/place credentials are configured, and the supported data modes.
+
+Supported modes:
+
+- `demo`: labeled benchmark scaffolding only; no live local evidence.
+- `manual`: user-entered competitors, suppliers, quotations, observations, costs, and locations.
+- `live`: requires backend provider credentials. Missing credentials return actionable warnings.
+
+## POST /api/v1/business-analyses
+
+Creates and persists an evidence-based business decision brief for local businesses, services, shop/property evaluation, existing businesses, or technology startup concepts.
+
+### Request
+
+```json
+{
+  "workflow_type": "existing_idea",
+  "business_idea": "Mobile-repair shop",
+  "business_category": "Local repair service",
+  "location": {
+    "country": "United States",
+    "city": "Austin",
+    "locality": "Downtown",
+    "radius_km": 3,
+    "source": "manual"
+  },
+  "budget": 25000,
+  "priorities": ["Full analysis", "Supplier discovery", "Required daily sales"],
+  "data_mode": "manual",
+  "target_customers": "office workers and residents needing quick repairs",
+  "manual_competitors": [
+    {
+      "name": "Downtown Phone Repair",
+      "category": "mobile repair",
+      "distance_km": 1.1,
+      "notes": "User observed weekend queues."
+    }
+  ],
+  "manual_suppliers": [
+    {
+      "name": "Parts Wholesale Counter",
+      "category": "screen and battery supplier",
+      "distance_km": 8,
+      "product_categories": ["screens", "batteries"]
+    }
+  ],
+  "financial_assumptions": {
+    "expected_rent": 1800,
+    "security_deposit": 3600,
+    "working_capital_months": 3,
+    "average_transaction_value": 45,
+    "gross_margin_percent": 45,
+    "working_days_per_month": 26
+  }
+}
+```
+
+### Response
+
+The response includes:
+
+- `analysis_id`
+- provider mode and demo notice
+- disclaimer
+- recommendation
+- explainable Opportunity Score
+- evidence records
+- competitors and suppliers
+- candidate areas and property analysis
+- customer segments
+- procurement and opening inventory plan
+- financial assumptions and scenarios
+- daily-sales targets
+- validation plan
+- performance-tracking scaffold
+- `board_brief` for launching the existing animated boardroom
+- exportable `report`
+
+Opportunity Score is not a success probability and should never be presented as a guarantee.
+
+## GET /api/v1/business-analyses
+
+Returns saved business-analysis summaries.
+
+Query parameters:
+
+- `limit`: 1 to 100
+
+## GET /api/v1/business-analyses/{analysis_id}
+
+Returns a persisted business decision brief.
+
+## GET /api/v1/business-analyses/{analysis_id}/export
+
+Exports a business decision brief.
+
+Query parameter:
+
+- `format`: `pdf`, `markdown`, or `json`
+
+## POST /api/v1/business-analyses/{analysis_id}/performance-entries
+
+Adds actual operating performance for forecast-versus-actual review.
+
+```json
+{
+  "period_label": "Week 1",
+  "revenue": 500,
+  "expenses": 900,
+  "customers": 18,
+  "transactions": 20,
+  "complaints": 1
+}
+```
+
+## POST /api/v1/business-analyses/{analysis_id}/board-review
+
+Generates a simple board review from recorded actuals:
+
+- performance summary
+- top issue
+- top opportunity
+- financial warning
+- customer insight
+- inventory insight
+- recommended experiments
+- next-week priorities
 
 ## GET /api/v1/board-meetings
 
@@ -202,3 +334,8 @@ Live and synchronous meetings persist to PostgreSQL:
 - final votes in `board_votes`
 - report and streamed report sections in `final_reports` and `report_sections`
 - favorite state in `board_meetings`
+- business analyses in `business_analyses`
+- reusable evidence records in `business_evidence_records`
+- saved suppliers in `saved_suppliers`
+- validation tasks in `business_validation_tasks`
+- actual performance entries in `business_performance_entries`
