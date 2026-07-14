@@ -7,6 +7,7 @@ const apiInternalBaseUrl = (process.env.API_INTERNAL_BASE_URL ?? "http://localho
 const nextConfig = {
   reactStrictMode: true,
   typedRoutes: true,
+  output: "standalone",
   async rewrites() {
     return [
       {

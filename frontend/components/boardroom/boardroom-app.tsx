@@ -10,20 +10,30 @@ import {
   CheckCircle2,
   CircleAlert,
   CircleDotDashed,
+  Database,
   Download,
   FileJson,
   FileText,
   Gauge,
   History,
+  KeyRound,
   Layers3,
   LineChart,
   Loader2,
+  Map as MapIcon,
+  MonitorCog,
+  Moon,
+  Palette,
   Play,
   RotateCcw,
   Search,
+  Server,
+  Settings,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Star,
+  Stethoscope,
   Trash2,
   TrendingUp,
   type LucideIcon,
@@ -44,6 +54,7 @@ import {
   boardMeetingWebSocketUrl,
   deleteMeeting,
   fetchDashboard,
+  fetchBusinessProviderStatus,
   fetchMeetingDetail,
   fetchMeetings,
   generateStartupIdeas,
@@ -54,6 +65,7 @@ import {
 import type {
   BoardMeetingDetail,
   BoardMeetingResult,
+  BusinessProviderStatus,
   ConfidencePoint,
   DashboardSnapshot,
   GlobalSearchResults,
@@ -66,6 +78,7 @@ import type {
   StartupIdeaGenerationPayload,
   StreamedReportSection
 } from "@/lib/types";
+import { APP_NAME, APP_VERSION, DEFAULT_EXPORT_FORMAT, RELEASE_CHANNEL } from "@/lib/app-config";
 import { cn } from "@/lib/utils";
 import { useBoardroomStore } from "@/store/use-boardroom-store";
 import { Button } from "@/components/ui/button";
@@ -78,11 +91,14 @@ type BriefFormState = StartupBriefPayload & {
 };
 
 type LiveStatus = "idle" | "connecting" | "running" | "completed" | "error";
-type AppView = "dashboard" | "decide" | "ideas" | "meeting" | "history";
+type AppView = "dashboard" | "decide" | "ideas" | "meeting" | "history" | "settings";
+type ExportFormat = "pdf" | "markdown" | "json";
+type ThemePreference = "dark" | "system";
 
 type LiveMeetingState = {
   status: LiveStatus;
   meetingId: string | null;
+  meetingMode: string | null;
   activeRole: string | null;
   executives: string[];
   statuses: Record<string, string>;
@@ -97,6 +113,7 @@ type LiveMeetingState = {
 
 const executiveRoles = [
   "CEO",
+  "Risk Officer",
   "CTO",
   "CFO",
   "COO",
@@ -116,6 +133,17 @@ const executiveRoles = [
   "AI Ethics Advisor"
 ];
 
+const meetingModes = [
+  { value: "full_board", label: "Full Board" },
+  { value: "quick_review", label: "Quick Review" },
+  { value: "emergency_meeting", label: "Emergency Meeting" },
+  { value: "investor_pitch", label: "Investor Pitch" },
+  { value: "expansion_review", label: "Expansion Review" },
+  { value: "pivot_review", label: "Pivot Review" },
+  { value: "acquisition_review", label: "Acquisition Review" },
+  { value: "crisis_meeting", label: "Crisis Meeting" }
+];
+
 const initialForm: BriefFormState = {
   startup_idea: "AI operating system that helps independent clinics manage cash flow",
   industry: "healthcare fintech",
@@ -126,7 +154,8 @@ const initialForm: BriefFormState = {
   competitorsText: "QuickBooks, Brex, Ramp",
   target_audience: "clinic owners with 5-50 employees",
   funding_stage: "pre-seed",
-  business_model: "B2B SaaS"
+  business_model: "B2B SaaS",
+  meeting_mode: "full_board"
 };
 
 const initialIdeaForm: StartupIdeaGenerationPayload = {
@@ -143,6 +172,7 @@ const initialIdeaForm: StartupIdeaGenerationPayload = {
 const initialLiveState: LiveMeetingState = {
   status: "idle",
   meetingId: null,
+  meetingMode: null,
   activeRole: null,
   executives: executiveRoles,
   statuses: {},
@@ -157,6 +187,9 @@ const initialLiveState: LiveMeetingState = {
 
 const sectionTitles: Record<string, string> = {
   executive_summary: "Executive Summary",
+  evidence_packet: "Evidence Packet",
+  strategic_options: "Strategic Options",
+  decision_matrix: "Decision Matrix",
   startup_overview: "Startup Overview",
   executive_opinions: "Executive Opinions",
   business_plan: "Business Plan",
@@ -179,7 +212,14 @@ const sectionTitles: Record<string, string> = {
   pitch_deck_summary: "Pitch Deck",
   ninety_day_roadmap: "90-Day Roadmap",
   board_vote: "Board Vote",
-  confidence_scores: "Confidence"
+  confidence_scores: "Confidence",
+  confidence_timeline: "Confidence Timeline",
+  vote_timeline: "Vote Timeline",
+  reasoning_flow: "Reasoning Flow",
+  meeting_replay: "Meeting Replay",
+  executive_scorecard: "Executive Scorecard",
+  visual_reasoning_heatmap: "Visual Reasoning Heatmap",
+  final_decision_brief: "Final Decision Brief"
 };
 
 export function BoardroomApp() {
@@ -197,11 +237,16 @@ export function BoardroomApp() {
   const [historyDetail, setHistoryDetail] = useState<BoardMeetingDetail | null>(null);
   const [globalQuery, setGlobalQuery] = useState("");
   const [searchResults, setSearchResults] = useState<GlobalSearchResults | null>(null);
+  const [providerStatus, setProviderStatus] = useState<BusinessProviderStatus | null>(null);
   const [loadingDashboard, setLoadingDashboard] = useState(true);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [loadingProviderStatus, setLoadingProviderStatus] = useState(false);
   const [generatingIdeas, setGeneratingIdeas] = useState(false);
   const [searching, setSearching] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [themePreference, setThemePreference] = useState<ThemePreference>("dark");
+  const [exportDefault, setExportDefault] = useState<ExportFormat>(DEFAULT_EXPORT_FORMAT);
   const [liveState, setLiveState] = useState<LiveMeetingState>(initialLiveState);
   const [activeSection, setActiveSection] = useState("executive_summary");
   const socketRef = useRef<WebSocket | null>(null);
@@ -222,6 +267,18 @@ export function BoardroomApp() {
       setWorkspaceError(error instanceof Error ? error.message : "Workspace data failed to load");
     } finally {
       setLoadingDashboard(false);
+    }
+  }, []);
+
+  const refreshProviderStatus = useCallback(async () => {
+    setLoadingProviderStatus(true);
+    try {
+      setProviderStatus(await fetchBusinessProviderStatus());
+      setSettingsError(null);
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : "Provider diagnostics failed to load");
+    } finally {
+      setLoadingProviderStatus(false);
     }
   }, []);
 
@@ -382,11 +439,31 @@ export function BoardroomApp() {
   }
 
   useEffect(() => {
+    const storedTheme = window.localStorage.getItem("boardroom.theme");
+    if (storedTheme === "dark" || storedTheme === "system") {
+      setThemePreference(storedTheme);
+    }
+
+    const storedExport = window.localStorage.getItem("boardroom.exportDefault");
+    if (storedExport === "pdf" || storedExport === "markdown" || storedExport === "json") {
+      setExportDefault(storedExport);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("boardroom.theme", themePreference);
+    window.localStorage.setItem("boardroom.exportDefault", exportDefault);
+    document.documentElement.classList.add("dark");
+    document.documentElement.dataset.themePreference = themePreference;
+  }, [exportDefault, themePreference]);
+
+  useEffect(() => {
     void refreshWorkspace();
+    void refreshProviderStatus();
     return () => {
       socketRef.current?.close();
     };
-  }, [refreshWorkspace]);
+  }, [refreshProviderStatus, refreshWorkspace]);
 
   const pending = liveState.status === "connecting" || liveState.status === "running";
   const filteredHistory = history.filter((meeting) => {
@@ -428,6 +505,9 @@ export function BoardroomApp() {
               </NavButton>
               <NavButton active={view === "history"} icon={History} onClick={() => setView("history")}>
                 History
+              </NavButton>
+              <NavButton active={view === "settings"} icon={Settings} onClick={() => setView("settings")}>
+                Settings
               </NavButton>
             </nav>
 
@@ -537,6 +617,19 @@ export function BoardroomApp() {
               onStart={startLiveMeeting}
               onFavorite={toggleFavorite}
               onDelete={removeHistory}
+            />
+          ) : null}
+
+          {view === "settings" ? (
+            <SettingsView
+              providerStatus={providerStatus}
+              loadingProviderStatus={loadingProviderStatus}
+              settingsError={settingsError}
+              themePreference={themePreference}
+              setThemePreference={setThemePreference}
+              exportDefault={exportDefault}
+              setExportDefault={setExportDefault}
+              onRefresh={refreshProviderStatus}
             />
           ) : null}
         </div>
@@ -1036,6 +1129,243 @@ function HistoryView({
   );
 }
 
+function SettingsView({
+  providerStatus,
+  loadingProviderStatus,
+  settingsError,
+  themePreference,
+  setThemePreference,
+  exportDefault,
+  setExportDefault,
+  onRefresh
+}: {
+  providerStatus: BusinessProviderStatus | null;
+  loadingProviderStatus: boolean;
+  settingsError: string | null;
+  themePreference: ThemePreference;
+  setThemePreference: (value: ThemePreference) => void;
+  exportDefault: ExportFormat;
+  setExportDefault: (value: ExportFormat) => void;
+  onRefresh: () => void;
+}) {
+  const apiBaseLabel = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "Next.js proxy";
+  const websocketLabel = process.env.NEXT_PUBLIC_WS_BASE_URL?.trim() || "Auto-detected backend";
+  const defaultDataMode = providerStatus?.default_mode ?? "demo";
+  const supportedModes = providerStatus?.modes
+    .map((mode) => String(mode.name ?? mode.mode ?? mode.label ?? ""))
+    .filter(Boolean);
+
+  return (
+    <div className="space-y-4">
+      <section className="flex flex-col gap-3 rounded-lg border border-white/10 bg-white/[0.035] p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="teal">{RELEASE_CHANNEL}</Badge>
+            <Badge>{APP_VERSION}</Badge>
+          </div>
+          <h2 className="mt-3 break-words text-2xl font-semibold text-white">{APP_NAME} Settings</h2>
+          <p className="mt-1 text-sm text-board-muted">Desktop-ready configuration and diagnostics</p>
+        </div>
+        <Button type="button" variant="quiet" onClick={onRefresh} disabled={loadingProviderStatus}>
+          {loadingProviderStatus ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RotateCcw className="h-4 w-4" />
+          )}
+          Refresh
+        </Button>
+      </section>
+
+      {settingsError ? (
+        <div className="rounded-md border border-board-amber/30 bg-board-amber/10 p-3 text-sm text-board-amber">
+          {settingsError}
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Panel icon={MonitorCog} title="AI Provider" subtitle="Backend runtime">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <SettingsMetric icon={Server} label="Provider" value="Backend configured" detail="local or routed" />
+            <SettingsMetric icon={ShieldCheck} label="Browser keys" value="None exposed" detail="server-side only" />
+          </div>
+          <SettingsRow label="Fallback posture" value="Deterministic local provider remains available" />
+          <SettingsRow label="Production key handling" value="Environment variables are never rendered" />
+        </Panel>
+
+        <Panel icon={MapIcon} title="Maps Provider" subtitle="Business evidence">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <SettingsMetric
+              icon={MapIcon}
+              label="Provider"
+              value={providerStatus?.maps_provider ?? "unknown"}
+              detail="backend setting"
+            />
+            <SettingsMetric
+              icon={ShieldCheck}
+              label="Maps"
+              value={providerStatus?.live_maps_configured ? "Configured" : "Not configured"}
+              detail="redacted"
+            />
+            <SettingsMetric
+              icon={ShieldCheck}
+              label="Places"
+              value={providerStatus?.live_places_configured ? "Configured" : "Not configured"}
+              detail="redacted"
+            />
+          </div>
+          <SettingsRow label="Default data mode" value={titleCase(defaultDataMode)} />
+          <SettingsRow
+            label="Supported modes"
+            value={supportedModes?.length ? supportedModes.map(titleCase).join(", ") : "Demo, Manual, Live"}
+          />
+        </Panel>
+
+        <Panel icon={KeyRound} title="API Keys" subtitle="Secret posture">
+          <div className="grid gap-2">
+            {["OpenAI", "Anthropic", "Gemini", "Maps", "Places"].map((name) => (
+              <SecretRow key={name} label={`${name} key`} />
+            ))}
+          </div>
+        </Panel>
+
+        <Panel icon={Palette} title="Theme" subtitle="Display preference">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <ChoiceTile
+              icon={Moon}
+              label="Dark"
+              active={themePreference === "dark"}
+              onClick={() => setThemePreference("dark")}
+            />
+            <ChoiceTile
+              icon={MonitorCog}
+              label="System"
+              active={themePreference === "system"}
+              onClick={() => setThemePreference("system")}
+            />
+          </div>
+          <SettingsRow label="Active palette" value="Dark boardroom" />
+        </Panel>
+
+        <Panel icon={Database} title="Data Mode" subtitle="Evidence defaults">
+          <div className="grid gap-2 sm:grid-cols-3">
+            {(["demo", "manual", "live"] as const).map((mode) => (
+              <ChoiceTile
+                key={mode}
+                icon={mode === "demo" ? Sparkles : mode === "manual" ? FileText : Wifi}
+                label={titleCase(mode)}
+                active={defaultDataMode === mode}
+                disabled={mode === "live" && providerStatus?.live_places_configured !== true}
+                onClick={() => undefined}
+              />
+            ))}
+          </div>
+          <SettingsRow label="Live evidence" value={providerStatus?.live_places_configured ? "Available" : "Provider credentials required"} />
+        </Panel>
+
+        <Panel icon={SlidersHorizontal} title="Export Defaults" subtitle="Artifacts">
+          <div className="grid gap-2 sm:grid-cols-3">
+            {(["pdf", "markdown", "json"] as ExportFormat[]).map((format) => (
+              <ChoiceTile
+                key={format}
+                icon={format === "pdf" ? Download : format === "markdown" ? FileText : FileJson}
+                label={format.toUpperCase()}
+                active={exportDefault === format}
+                onClick={() => setExportDefault(format)}
+              />
+            ))}
+          </div>
+          <SettingsRow label="Default format" value={exportDefault.toUpperCase()} />
+        </Panel>
+      </div>
+
+      <Panel icon={Stethoscope} title="Diagnostics" subtitle="Client runtime">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <SettingsMetric icon={Server} label="HTTP API" value={apiBaseLabel} detail="public client route" />
+          <SettingsMetric icon={Wifi} label="WebSocket" value={websocketLabel} detail="live meetings" />
+          <SettingsMetric icon={Settings} label="Version" value={APP_VERSION} detail={RELEASE_CHANNEL} />
+          <SettingsMetric icon={ShieldCheck} label="Secrets" value="Redacted" detail="never shown" />
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function SettingsMetric({
+  icon: Icon,
+  label,
+  value,
+  detail
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-md border border-white/10 bg-white/[0.035] p-3">
+      <div className="flex items-center gap-2 text-xs uppercase text-board-muted">
+        <Icon className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate">{label}</span>
+      </div>
+      <div className="mt-2 break-words text-sm font-semibold text-white">{value}</div>
+      <div className="mt-1 break-words text-xs text-board-muted">{detail}</div>
+    </div>
+  );
+}
+
+function SettingsRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="mt-3 flex flex-col gap-1 border-t border-white/10 pt-3 sm:flex-row sm:items-center sm:justify-between">
+      <span className="text-sm text-board-muted">{label}</span>
+      <span className="break-words text-sm font-medium text-board-mist sm:text-right">{value}</span>
+    </div>
+  );
+}
+
+function SecretRow({ label }: { label: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border border-white/10 bg-white/[0.035] p-3">
+      <div className="min-w-0">
+        <div className="break-words text-sm font-medium text-white">{label}</div>
+        <div className="mt-1 text-xs text-board-muted">Backend environment</div>
+      </div>
+      <Badge>Redacted</Badge>
+    </div>
+  );
+}
+
+function ChoiceTile({
+  icon: Icon,
+  label,
+  active,
+  disabled = false,
+  onClick
+}: {
+  icon: LucideIcon;
+  label: string;
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "flex min-h-20 min-w-0 flex-col items-start justify-between rounded-md border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-board-teal disabled:cursor-not-allowed disabled:opacity-45",
+        active
+          ? "border-board-teal/50 bg-board-teal/15 text-board-teal"
+          : "border-white/10 bg-white/[0.035] text-board-mist hover:border-board-teal/30"
+      )}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="break-words text-sm font-medium">{label}</span>
+    </button>
+  );
+}
+
 function FounderBriefPanel({
   form,
   setForm,
@@ -1068,6 +1398,20 @@ function FounderBriefPanel({
             value={form.startup_idea}
             onChange={(event) => setForm({ ...form, startup_idea: event.target.value })}
           />
+        </Field>
+
+        <Field label="Meeting mode">
+          <select
+            value={form.meeting_mode ?? "full_board"}
+            onChange={(event) => setForm({ ...form, meeting_mode: event.target.value })}
+            className="h-10 w-full rounded-md border border-white/10 bg-board-panel px-3 text-sm text-board-mist outline-none focus:border-board-teal/50"
+          >
+            {meetingModes.map((mode) => (
+              <option key={mode.value} value={mode.value}>
+                {mode.label}
+              </option>
+            ))}
+          </select>
         </Field>
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
@@ -1154,7 +1498,11 @@ function BoardroomStage({ state }: { state: LiveMeetingState }) {
     <Panel
       icon={Wifi}
       title="Executive Boardroom"
-      subtitle={state.meetingId ? `Meeting ${state.meetingId.slice(0, 8)}` : "Awaiting brief"}
+      subtitle={
+        state.meetingId
+          ? `${meetingModeLabel(state.meetingMode)} - Meeting ${state.meetingId.slice(0, 8)}`
+          : "Awaiting brief"
+      }
     >
       <div className="grid gap-2 lg:hidden">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -1577,6 +1925,7 @@ function HistoryDetailPanel({
           <div className="mt-3 flex flex-wrap gap-2">
             <Badge tone={decisionTone(detail.decision)}>{formatDecision(detail.decision)}</Badge>
             <Badge>{percent(detail.aggregate_confidence)} confidence</Badge>
+            <Badge>{meetingModeLabel(detail.startup_brief.meeting_mode)}</Badge>
             <Badge>{detail.status}</Badge>
           </div>
         </div>
@@ -2099,6 +2448,8 @@ function reduceLiveState(state: LiveMeetingState, event: LiveBoardroomEvent): Li
     return {
       ...next,
       status: "running",
+      meetingMode:
+        typeof event.payload.meeting_mode === "string" ? event.payload.meeting_mode : "full_board",
       executives: Array.isArray(event.payload.executives)
         ? event.payload.executives.map(String)
         : executiveRoles,
@@ -2219,13 +2570,15 @@ function formToPayload(form: BriefFormState): StartupBriefPayload {
       .filter(Boolean),
     target_audience: form.target_audience,
     funding_stage: form.funding_stage,
-    business_model: form.business_model
+    business_model: form.business_model,
+    meeting_mode: form.meeting_mode ?? "full_board"
   };
 }
 
 function formFromPayload(payload: StartupBriefPayload): BriefFormState {
   return {
     ...payload,
+    meeting_mode: payload.meeting_mode ?? "full_board",
     competitorsText: payload.competitors.join(", ")
   };
 }
@@ -2272,6 +2625,11 @@ function titleCase(value: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
     .replace("Ai", "AI")
     .replace("Vc", "VC");
+}
+
+function meetingModeLabel(value?: string | null) {
+  const mode = meetingModes.find((item) => item.value === value);
+  return mode?.label ?? "Full Board";
 }
 
 function formatDecision(value: string) {

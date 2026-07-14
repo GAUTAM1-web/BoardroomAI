@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.domain.boardroom.models import ExecutiveProfile
+from app.domain.boardroom.models import ExecutiveProfile, StartupBrief
 
 EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
     ExecutiveProfile(
@@ -11,6 +11,24 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
         risk_focus=("go_to_market_uncertainty", "capital_pressure", "timeline_pressure"),
         optimism_bias=0.06,
         veto_threshold=0.88,
+        reasoning_style="growth, vision, sequencing, and long-term strategic trade-offs",
+    ),
+    ExecutiveProfile(
+        role="Risk Officer",
+        charter=(
+            "Serves as devil's advocate, challenges unsupported assumptions, and searches "
+            "for hidden downside before approval."
+        ),
+        personality=(
+            "Adversarial, precise, calm under pressure, and unwilling to accept weak evidence."
+        ),
+        goals=("challenge assumptions", "surface unknowns", "force evidence-backed decisions"),
+        risk_focus=("capital_pressure", "regulatory_exposure", "competitive_pressure"),
+        optimism_bias=-0.08,
+        veto_threshold=0.66,
+        reasoning_style=(
+            "devil's advocate, assumption testing, missing evidence, and downside discovery"
+        ),
     ),
     ExecutiveProfile(
         role="CTO",
@@ -23,6 +41,9 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
         risk_focus=("technology_feasibility", "data_ethics", "timeline_pressure"),
         optimism_bias=-0.02,
         veto_threshold=0.78,
+        reasoning_style=(
+            "technical feasibility, architecture, data quality, and delivery sequencing"
+        ),
     ),
     ExecutiveProfile(
         role="CFO",
@@ -32,6 +53,7 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
         risk_focus=("capital_pressure", "go_to_market_uncertainty", "operational_complexity"),
         optimism_bias=-0.05,
         veto_threshold=0.72,
+        reasoning_style="cash preservation, ROI, unit economics, and financial discipline",
     ),
     ExecutiveProfile(
         role="COO",
@@ -41,6 +63,7 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
         risk_focus=("operational_complexity", "timeline_pressure", "capital_pressure"),
         optimism_bias=-0.01,
         veto_threshold=0.76,
+        reasoning_style="execution logistics, operating cadence, ownership, and process risk",
     ),
     ExecutiveProfile(
         role="CMO",
@@ -50,6 +73,9 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
         risk_focus=("go_to_market_uncertainty", "competitive_pressure", "market_complexity"),
         optimism_bias=0.01,
         veto_threshold=0.78,
+        reasoning_style=(
+            "customer urgency, positioning, acquisition channels, and messaging clarity"
+        ),
     ),
     ExecutiveProfile(
         role="Product Manager",
@@ -59,6 +85,7 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
         risk_focus=("market_complexity", "technology_feasibility", "timeline_pressure"),
         optimism_bias=0.02,
         veto_threshold=0.80,
+        reasoning_style="user workflow validation, MVP scope, adoption, and product trade-offs",
     ),
     ExecutiveProfile(
         role="Investor",
@@ -68,6 +95,7 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
         risk_focus=("competitive_pressure", "market_complexity", "capital_pressure"),
         optimism_bias=-0.01,
         veto_threshold=0.76,
+        reasoning_style="scale, venture returns, defensibility, valuation, and funding readiness",
     ),
     ExecutiveProfile(
         role="VC Partner",
@@ -77,6 +105,7 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
         risk_focus=("market_complexity", "competitive_pressure", "go_to_market_uncertainty"),
         optimism_bias=-0.03,
         veto_threshold=0.74,
+        reasoning_style="fund-return potential, category timing, market size, and power-law upside",
     ),
     ExecutiveProfile(
         role="Market Research Analyst",
@@ -88,6 +117,7 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
         risk_focus=("market_complexity", "go_to_market_uncertainty", "competitive_pressure"),
         optimism_bias=-0.01,
         veto_threshold=0.78,
+        reasoning_style="evidence quality, demand segmentation, and adoption barriers",
     ),
     ExecutiveProfile(
         role="Competitive Intelligence Analyst",
@@ -97,6 +127,7 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
         risk_focus=("competitive_pressure", "market_complexity", "capital_pressure"),
         optimism_bias=-0.04,
         veto_threshold=0.72,
+        reasoning_style="competitive maps, moats, retaliation risk, and differentiation",
     ),
     ExecutiveProfile(
         role="Legal Advisor",
@@ -106,6 +137,7 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
         risk_focus=("regulatory_exposure", "data_ethics", "operational_complexity"),
         optimism_bias=-0.05,
         veto_threshold=0.68,
+        reasoning_style="compliance, regulation, contracts, jurisdiction, and downside protection",
     ),
     ExecutiveProfile(
         role="Cybersecurity Expert",
@@ -115,6 +147,9 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
         risk_focus=("data_ethics", "technology_feasibility", "regulatory_exposure"),
         optimism_bias=-0.04,
         veto_threshold=0.70,
+        reasoning_style=(
+            "threat modeling, security controls, data handling, and incident prevention"
+        ),
     ),
     ExecutiveProfile(
         role="Economist",
@@ -126,6 +161,7 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
         risk_focus=("market_complexity", "capital_pressure", "go_to_market_uncertainty"),
         optimism_bias=-0.02,
         veto_threshold=0.78,
+        reasoning_style="macro sensitivity, pricing pressure, demand cycles, and probability",
     ),
     ExecutiveProfile(
         role="Growth Strategist",
@@ -135,6 +171,7 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
         risk_focus=("go_to_market_uncertainty", "competitive_pressure", "market_complexity"),
         optimism_bias=0.03,
         veto_threshold=0.82,
+        reasoning_style="growth experiments, activation loops, channel tests, and retention",
     ),
     ExecutiveProfile(
         role="UX Designer",
@@ -144,6 +181,7 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
         risk_focus=("market_complexity", "data_ethics", "technology_feasibility"),
         optimism_bias=0.02,
         veto_threshold=0.82,
+        reasoning_style="trust, comprehension, workflow friction, and human adoption",
     ),
     ExecutiveProfile(
         role="Data Scientist",
@@ -155,6 +193,7 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
         risk_focus=("data_ethics", "technology_feasibility", "market_complexity"),
         optimism_bias=-0.02,
         veto_threshold=0.76,
+        reasoning_style="measurement, model risk, data availability, and statistical rigor",
     ),
     ExecutiveProfile(
         role="Operations Advisor",
@@ -164,6 +203,7 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
         risk_focus=("operational_complexity", "timeline_pressure", "go_to_market_uncertainty"),
         optimism_bias=-0.01,
         veto_threshold=0.78,
+        reasoning_style="repeatable systems, vendor readiness, support load, and resilience",
     ),
     ExecutiveProfile(
         role="AI Ethics Advisor",
@@ -173,5 +213,102 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
         risk_focus=("data_ethics", "regulatory_exposure", "market_complexity"),
         optimism_bias=-0.03,
         veto_threshold=0.72,
+        reasoning_style="AI governance, fairness, user consent, explainability, and trust",
     ),
 )
+
+_PROFILE_BY_ROLE = {profile.role: profile for profile in EXECUTIVE_PROFILES}
+
+_MODE_ROLES: dict[str, tuple[str, ...]] = {
+    "quick_review": ("CEO", "Risk Officer", "CFO", "COO", "CMO"),
+    "emergency_meeting": (
+        "CEO",
+        "Risk Officer",
+        "CFO",
+        "COO",
+        "Legal Advisor",
+        "Cybersecurity Expert",
+        "Operations Advisor",
+    ),
+    "investor_pitch": (
+        "CEO",
+        "Risk Officer",
+        "CFO",
+        "CMO",
+        "Investor",
+        "VC Partner",
+        "Market Research Analyst",
+        "Competitive Intelligence Analyst",
+    ),
+    "expansion_review": (
+        "CEO",
+        "Risk Officer",
+        "CFO",
+        "COO",
+        "CMO",
+        "Growth Strategist",
+        "Operations Advisor",
+        "Economist",
+        "Investor",
+    ),
+    "pivot_review": (
+        "CEO",
+        "Risk Officer",
+        "Product Manager",
+        "CMO",
+        "Market Research Analyst",
+        "CFO",
+        "Investor",
+    ),
+    "acquisition_review": (
+        "CEO",
+        "Risk Officer",
+        "CFO",
+        "Legal Advisor",
+        "Investor",
+        "Competitive Intelligence Analyst",
+        "COO",
+    ),
+    "crisis_meeting": (
+        "CEO",
+        "Risk Officer",
+        "CFO",
+        "COO",
+        "Legal Advisor",
+        "Cybersecurity Expert",
+        "AI Ethics Advisor",
+        "Operations Advisor",
+    ),
+}
+
+
+def select_executive_profiles(brief: StartupBrief) -> tuple[ExecutiveProfile, ...]:
+    if brief.normalized_meeting_mode == "full_board":
+        return EXECUTIVE_PROFILES
+
+    roles = list(_MODE_ROLES[brief.normalized_meeting_mode])
+    text = brief.normalized_text()
+
+    if any(keyword in text for keyword in ("restaurant", "food", "cafe", "retail", "shop")):
+        roles.extend(["COO", "CMO", "Operations Advisor"])
+    if any(keyword in text for keyword in ("health", "medical", "clinic", "hospital")):
+        roles.extend(["Legal Advisor", "AI Ethics Advisor", "Data Scientist"])
+    if any(
+        keyword in text
+        for keyword in ("manufacturing", "factory", "supply chain", "logistics")
+    ):
+        roles.extend(["COO", "Operations Advisor", "Economist"])
+    if any(
+        keyword in text
+        for keyword in ("technology", "software", "ai", "automation", "platform")
+    ):
+        roles.extend(["CTO", "Data Scientist", "Cybersecurity Expert"])
+    if any(keyword in text for keyword in ("bank", "finance", "fintech", "insurance")):
+        roles.extend(["CFO", "Legal Advisor", "Investor"])
+
+    ordered_unique = []
+    for role in roles:
+        if role in _PROFILE_BY_ROLE and role not in ordered_unique:
+            ordered_unique.append(role)
+
+    return tuple(_PROFILE_BY_ROLE[role] for role in ordered_unique)

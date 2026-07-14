@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from typing import Literal, TypeVar
 from uuid import UUID
 
+import structlog
 from asyncpg import PostgresError
 from fastapi import APIRouter, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -50,6 +51,7 @@ from app.schemas.business import (
 
 router = APIRouter(prefix="/api/v1", tags=["boardroom"])
 T = TypeVar("T")
+logger = structlog.get_logger("boardroom.api")
 
 
 async def with_repository(operation: Callable[[PostgresMeetingRepository], Awaitable[T]]) -> T:
@@ -57,6 +59,7 @@ async def with_repository(operation: Callable[[PostgresMeetingRepository], Await
         async with AsyncSessionLocal() as session:
             return await operation(PostgresMeetingRepository(session))
     except (PostgresError, SQLAlchemyError) as exc:
+        logger.warning("repository_unavailable", error_type=type(exc).__name__)
         raise HTTPException(
             status_code=503,
             detail=(
@@ -353,12 +356,13 @@ async def stream_board_meeting(websocket: WebSocket) -> None:
         return
 
     except Exception as exc:
+        logger.exception("live_boardroom_failed", error_type=type(exc).__name__)
         await websocket.send_json(
             {
                 "event_type": "error",
                 "payload": {
                     "message": "Live board meeting failed.",
-                    "details": str(exc),
+                    "details": "See server logs for the failure reference.",
                 },
             }
         )

@@ -1,0 +1,10 @@
+node_modules
+.next
+release
+out
+dist
+coverage
+*.log
+*.tsbuildinfo
+npm-debug.log*
+electron

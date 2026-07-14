@@ -8,6 +8,7 @@ export type StartupBriefPayload = {
   target_audience: string;
   funding_stage: string;
   business_model: string;
+  meeting_mode?: string;
 };
 
 export type StartupIdeaGenerationPayload = {

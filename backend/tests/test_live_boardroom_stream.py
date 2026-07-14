@@ -43,8 +43,13 @@ async def _collect_events() -> list[dict[str, Any]]:
 async def test_live_stream_emits_realtime_board_events() -> None:
     events = await _collect_events()
     event_types = [str(event["event_type"]) for event in events]
+    started_payload = cast(dict[str, Any], events[0]["payload"])
+    assessment = cast(dict[str, Any], started_payload["assessment"])
 
     assert event_types[0] == "meeting_started"
+    assert started_payload["meeting_mode"] == "full_board"
+    assert "Risk Officer" in cast(list[str], started_payload["executives"])
+    assert "evidence" in assessment
     assert "executive_status" in event_types
     assert "timeline_statement" in event_types
     assert "confidence_changed" in event_types

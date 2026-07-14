@@ -25,6 +25,7 @@ class StartupBriefRecord(Base):
     target_audience: Mapped[str] = mapped_column(Text, nullable=False)
     funding_stage: Mapped[str] = mapped_column(String(80), nullable=False)
     business_model: Mapped[str] = mapped_column(String(120), nullable=False)
+    meeting_mode: Mapped[str] = mapped_column(String(80), nullable=False, default="full_board")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

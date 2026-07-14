@@ -4,6 +4,8 @@ Boardroom AI is an AI-powered operating system for founders. It turns a startup 
 
 Milestone 5 expands the product into an evidence-based business decision platform for technology startups, local businesses, service businesses, shop/location evaluation, supplier planning, validation, and post-launch performance review.
 
+Milestone 6 upgrades the board itself into an evidence-first executive intelligence layer with permanent executive personalities, dynamic meeting modes, devil's advocate review, confidence timelines, replayable decisions, and final decision briefs.
+
 ## Current Capabilities
 
 - Premium founder dashboard with recent meetings, reports, generated ideas, board decisions, approval rate, average confidence, top industries, filters, and global search.
@@ -11,17 +13,20 @@ Milestone 5 expands the product into an evidence-based business decision platfor
 - Startup idea cards with name, tagline, problem, solution, audience, revenue model, startup cost, TAM, innovation, scalability, difficulty, advantage, and a legacy heuristic score that is not a guarantee.
 - One-click launch from a generated idea into a live board meeting.
 - Manual founder brief creation remains available.
-- Live boardroom with 18 executive roles, active speaker indicators, status animation, confidence changes, vote changes, timeline, risk signals, and streamed report sections.
-- Smarter deterministic executive debate with challenges, agreement, disagreement, follow-up questions, pivots, partnerships, risk discovery, and references to prior discussion.
-- Professional board report after every meeting, including executive summary, startup overview, executive opinions, SWOT, competitors, market analysis, financial analysis, risk matrix, action plan, VC readiness scores, vote detail, and confidence scores.
+- Live boardroom with 19 executive roles, including a permanent Risk Officer devil's advocate, active speaker indicators, status animation, confidence changes, vote changes, timeline, risk signals, and streamed report sections.
+- Dynamic meeting modes: full board, quick review, emergency meeting, investor pitch, expansion review, pivot review, acquisition review, and crisis meeting.
+- Smarter deterministic executive debate with role personalities, reasoning styles, challenges, agreement, disagreement, follow-up questions, pivots, partnerships, risk discovery, memory references, and non-repetitive critique.
+- Professional board report after every meeting, including evidence packet, strategic options A/B/C, decision matrix, executive summary, startup overview, executive opinions, SWOT, competitors, market analysis, financial analysis, risk matrix, action plan, VC readiness scores, vote detail, confidence scores, confidence timeline, vote timeline, reasoning flow, meeting replay, executive scorecards, visual reasoning heatmap, and final decision brief.
 - History for previous meetings with search, filters, favorites, compare, report preview, relaunch, delete, and re-download.
 - Export support for PDF, Markdown, and JSON.
+- Professional Settings workspace with provider status, maps status, redacted API-key posture, theme preference, data-mode status, export defaults, and client diagnostics.
 - Evidence-based "Decide" workspace for local shops, service businesses, existing businesses, candidate properties, and startup concepts.
 - Optional location flow with manual entry, current-location permission only after user action, map-pin coordinate support, and no background tracking.
 - Manual/demo/live provider modes for competitors, suppliers, locations, and evidence. Demo mode is labeled `Demo data - not live local evidence`.
 - Explainable Opportunity Score, supplier/procurement plan, opening inventory, editable finance assumptions, daily-sales targets, validation plan, and board-ready brief.
 - Business analysis history, evidence records, saved suppliers, validation tasks, performance entries, and weekly board-review scaffolding.
 - Dockerized FastAPI, Next.js, PostgreSQL, Redis, and Qdrant stack.
+- Windows desktop shell powered by Electron with custom icon, splash screen, About dialog, production window, installer target, and portable executable target.
 
 ## Stack
 
@@ -33,6 +38,7 @@ Frontend:
 - Tailwind CSS
 - Framer Motion
 - Zustand
+- Electron and Electron Builder for Windows desktop packaging
 
 Backend:
 
@@ -111,7 +117,7 @@ Provider secrets stay on the backend. The frontend never needs map or place-sear
 1. Open the dashboard to review meeting history, approval rate, confidence, reports, and industry activity.
 2. Use Startup Generator to create startup cards from a short prompt or structured inputs.
 3. Open Decide to analyze a local business, shop/property, service business, operating business, or technology startup using evidence and assumptions.
-4. Launch a board meeting from a generated card or evidence brief, or open Boardroom and submit a manual founder brief.
+4. Launch a board meeting from a generated card or evidence brief, or open Boardroom, choose a meeting mode, and submit a manual founder brief.
 5. Watch the live executive discussion, vote changes, confidence evolution, risk signals, and report stream.
 6. Open History to search meetings, favorite startups, compare decisions, preview reports, relaunch a brief, delete history, or export artifacts.
 
@@ -169,13 +175,59 @@ cd frontend
 npm run lint
 ```
 
+## Desktop Mode
+
+The desktop application packages the existing Next.js frontend in an Electron shell. It starts a local Next server on `127.0.0.1:3010`, shows a branded splash screen while the server becomes reachable, opens Boardroom AI in a native window, and disables DevTools shortcuts in packaged production builds.
+
+Desktop packaging does not bundle PostgreSQL, Redis, Qdrant, or the FastAPI backend. Run the backend stack locally or configure the desktop environment to point at a reachable backend before using live board meetings, history, exports, or business intelligence.
+
+Build the Windows installer and portable executable:
+
+```powershell
+cd frontend
+npm run desktop:pack
+```
+
+Expected release artifacts:
+
+```text
+frontend/release/Boardroom AI-Setup-1.0.0-rc.1.exe
+frontend/release/Boardroom AI-Portable-1.0.0-rc.1.exe
+```
+
+Generate an unpacked app directory for smoke testing:
+
+```powershell
+cd frontend
+npm run desktop:dir
+```
+
+Development desktop shell:
+
+```powershell
+cd frontend
+npm run desktop:dev
+```
+
+Desktop release metadata:
+
+- Product name: `Boardroom AI`
+- App ID: `com.boardroomai.desktop`
+- Executable name: `BoardroomAI`
+- Version: `1.0.0-rc.1`
+- Build config: `frontend/electron-builder.yml`
+- Icon source: `frontend/public/boardroom-mark.svg`
+- Generated icons: `frontend/electron/build/icon.png` and `frontend/electron/build/icon.ico`
+
 ## Engineering Notes
 
 The current AI provider is deterministic by design. It gives repeatable tests and a fully functional offline development flow while preserving the provider abstraction for OpenAI, Claude, Gemini, Ollama, or other model-backed providers.
 
 Business intelligence follows the same offline-first rule. Demo mode is clearly labeled, manual mode uses user-entered evidence, and live-provider mode requires backend environment credentials. No provider API keys are exposed in frontend code.
 
-PostgreSQL remains the system of record for meetings, votes, confidence events, timeline turns, report sections, favorites, business analyses, evidence records, suppliers, validation tasks, performance entries, and exportable artifacts. Docker Compose remains the default development workflow.
+PostgreSQL remains the system of record for meeting modes, meetings, votes, confidence events, timeline turns, report sections, favorites, business analyses, evidence records, suppliers, validation tasks, performance entries, and exportable artifacts. Docker Compose remains the default development workflow.
+
+Production logs are structured JSON through `structlog`. Request logs include method, path, status code, and duration. Startup logs include environment, configured provider names, and data mode. Request bodies, API keys, and provider secrets are not logged.
 
 ## Stabilization Notes
 

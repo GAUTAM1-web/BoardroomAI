@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+from app.domain.boardroom.intelligence import (
+    build_confidence_timeline,
+    build_decision_matrix,
+    build_evidence_packet,
+    build_executive_scorecard,
+    build_final_decision_brief,
+    build_meeting_replay,
+    build_reasoning_flow,
+    build_strategic_options,
+    build_visual_reasoning_heatmap,
+    build_vote_timeline,
+)
 from app.domain.boardroom.models import (
     BoardReport,
     BoardVote,
@@ -16,6 +28,7 @@ def build_report(
     votes: tuple[BoardVote, ...],
     decision: str,
     aggregate_confidence: float,
+    invited_executives: tuple[str, ...] = (),
 ) -> BoardReport:
     primary_risks = [risk for risk, _score in assessment.primary_risks]
     approved = [vote for vote in votes if vote.vote == "approve"]
@@ -26,6 +39,7 @@ def build_report(
     vc_scores = _vc_scores(assessment, aggregate_confidence, decision)
     market = _market_analysis(brief, assessment)
     financial = _financial_analysis(brief, assessment)
+    evidence_packet = build_evidence_packet(brief, assessment)
 
     sections = {
         "executive_summary": {
@@ -38,9 +52,18 @@ def build_report(
                 f"{len(approved)} executives approve, {len(conditional)} approve with conditions, "
                 f"and {len(rejected)} reject until de-risked."
             ),
+            "meeting_mode": brief.normalized_meeting_mode,
+            "invited_executives": list(invited_executives) or [vote.role for vote in votes],
+            "evidence_quality": {
+                "score": evidence_packet["quality_score"],
+                "label": evidence_packet["quality_label"],
+            },
             "highest_priority": top_recommendations[:3],
             "vc_readiness_snapshot": vc_scores,
         },
+        "evidence_packet": evidence_packet,
+        "strategic_options": build_strategic_options(brief, assessment),
+        "decision_matrix": build_decision_matrix(brief, assessment, decision),
         "startup_overview": _startup_overview(brief, decision, aggregate_confidence),
         "executive_opinions": opinion_sections,
         "business_plan": {
@@ -232,6 +255,20 @@ def build_report(
             "aggregate": round(aggregate_confidence, 3),
             "by_role": {vote.role: round(vote.confidence, 3) for vote in votes},
         },
+        "confidence_timeline": build_confidence_timeline(turns),
+        "vote_timeline": build_vote_timeline(votes),
+        "reasoning_flow": build_reasoning_flow(brief, assessment, turns, decision),
+        "meeting_replay": build_meeting_replay(turns, votes),
+        "executive_scorecard": build_executive_scorecard(turns, votes),
+        "visual_reasoning_heatmap": build_visual_reasoning_heatmap(assessment),
+        "final_decision_brief": build_final_decision_brief(
+            brief=brief,
+            assessment=assessment,
+            votes=votes,
+            decision=decision,
+            aggregate_confidence=aggregate_confidence,
+            top_recommendations=top_recommendations,
+        ),
     }
 
     return BoardReport(
@@ -254,6 +291,7 @@ def _startup_overview(
         "revenue_model": brief.business_model,
         "business_model": brief.business_model,
         "funding_stage": brief.funding_stage,
+        "meeting_mode": brief.normalized_meeting_mode,
         "board_decision": decision,
         "confidence": round(aggregate_confidence, 3),
     }

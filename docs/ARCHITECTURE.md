@@ -6,6 +6,8 @@ Boardroom AI turns a founder's startup brief into an executive board meeting. Th
 
 Milestone 5 extends that intent beyond startup reports into evidence-based business decisions: discover, compare, validate, plan, launch, track, improve, and decide whether to expand, pivot, or exit.
 
+Milestone 6 upgrades the boardroom layer itself: meetings now begin from explicit evidence packets, route through dynamic meeting modes, include a permanent Risk Officer devil's advocate, and generate replayable decision artifacts instead of a static report snapshot.
+
 ## System Boundaries
 
 ```text
@@ -38,6 +40,7 @@ backend/
 frontend/
   app/                    Next.js App Router
   components/             boardroom experience and UI primitives
+  electron/               Electron main process, preload bridge, splash, icons
   lib/                    API client, utilities, shared types
   store/                  client-side state
 
@@ -54,8 +57,10 @@ Domain responsibilities:
 - normalize founder briefs
 - load executive role definitions
 - score market, financial, operational, legal, growth, and technology risk
-- run proposal, critique, revision, and consensus phases
+- select the right executive roster for full board, quick review, emergency, investor, expansion, pivot, acquisition, or crisis meetings
+- run proposal, assumption challenge, critique, revision, vote, and consensus phases
 - produce a structured board report
+- produce evidence packets, strategic options, decision matrices, confidence timelines, vote timelines, reasoning flow, meeting replay, executive scorecards, visual reasoning heatmaps, and final decision briefs
 - produce local-business decision briefs from evidence, user inputs, and labeled assumptions
 - calculate Opportunity Score, procurement needs, setup cost, daily-sales targets, and validation tasks
 - distinguish verified facts, user-provided information, configurable benchmarks, assumptions, unknowns, and demo-only scaffolding
@@ -75,6 +80,8 @@ Infrastructure responsibilities:
 - Redis-backed event streaming and job coordination
 - Qdrant strategic memory
 - AI provider adapters
+- structured production logging
+- Windows desktop packaging and local frontend server startup
 
 ## AI Architecture
 
@@ -85,6 +92,8 @@ Milestone 1 ships with a deterministic local provider because it gives repeatabl
 Milestone 2 adds a live streaming orchestrator beside the synchronous orchestrator. It emits typed boardroom events over WebSockets, records every event to PostgreSQL, and maintains meeting-scoped executive memory so executives can reference earlier arguments while the discussion unfolds.
 
 Milestone 3 adds the founder operating workspace on top of the same contracts: deterministic startup idea generation, dashboard metrics, meeting history, global search, favorites, compare, delete, and report exports. These features reuse persisted meetings and report sections instead of introducing a separate artifact store.
+
+Milestone 6 adds executive intelligence without changing the provider contract. Profiles now carry permanent reasoning styles, the orchestrator selects an executive subset from the requested meeting mode, the Risk Officer challenges unsupported assumptions before functional critiques, and the report builder assembles evidence-first decision artifacts from the same deterministic meeting state.
 
 Future provider routing:
 
@@ -101,11 +110,39 @@ Business-data provider routing:
 - `live` mode for future map/place/search providers through backend-only credentials
 - provider failures return actionable warnings and do not block manual analysis
 
+## Settings Workspace
+
+The Settings workspace is a frontend configuration surface. It shows backend provider status through the existing `/api/v1/business-data/providers` endpoint, stores non-secret theme and export preferences locally, and displays client diagnostics such as public API routing and WebSocket base configuration.
+
+Secrets are intentionally one-way:
+
+- API keys remain backend environment variables.
+- The browser and Electron renderer never receive provider key values.
+- Settings displays redacted status only.
+- Production logs avoid request bodies and secret-bearing headers.
+
+## Desktop Shell
+
+The Windows desktop build uses Electron rather than a separate frontend rewrite. Electron starts a local Next.js standalone server on `127.0.0.1:3010`, shows `electron/splash.html` while the server becomes reachable, then loads the same Boardroom AI workspace in a native window.
+
+Desktop responsibilities:
+
+- native double-click launch
+- product window title and icon
+- splash screen
+- About dialog with version metadata
+- production DevTools disabled by default
+- graceful shutdown of the local Next server
+- installer and portable executable targets through Electron Builder
+
+The desktop package does not embed PostgreSQL, Redis, Qdrant, or FastAPI. It expects the backend stack to run locally or be configured as a reachable backend endpoint.
+
 ## Executive Agents
 
-The first board includes:
+The board includes:
 
 - CEO
+- Risk Officer
 - CTO
 - CFO
 - COO
@@ -126,13 +163,15 @@ The first board includes:
 
 Each role has independent goals, personality, decision lens, confidence behavior, disagreement thresholds, and vote semantics.
 
+Meeting modes select a subset of that board when speed or context matters. `full_board` invites every executive; other modes always include the CEO and Risk Officer, then add the most relevant finance, operations, market, legal, security, investor, product, or data voices based on the mode and startup brief.
+
 ## Database Design
 
 PostgreSQL is the only relational database target.
 
 Core tables:
 
-- `startup_briefs` - immutable founder input snapshots
+- `startup_briefs` - immutable founder input snapshots, including selected meeting mode
 - `board_meetings` - meeting lifecycle, consensus state, aggregate confidence
 - `executive_agents` - role definitions attached to a meeting version
 - `meeting_turns` - proposal, critique, revision, and consensus turns

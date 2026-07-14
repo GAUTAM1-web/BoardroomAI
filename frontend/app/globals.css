@@ -37,6 +37,28 @@ select {
   font: inherit;
 }
 
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid rgba(56, 214, 198, 0.85);
+  outline-offset: 2px;
+}
+
+option {
+  background: #11151b;
+  color: #d7dee8;
+}
+
 ::selection {
   background: rgba(56, 214, 198, 0.3);
   color: #ffffff;
@@ -58,6 +80,17 @@ select {
 
 .text-balance {
   text-wrap: balance;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 ::-webkit-scrollbar {

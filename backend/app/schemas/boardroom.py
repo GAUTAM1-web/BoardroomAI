@@ -5,7 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from app.domain.boardroom.ideas import StartupIdeaRequest
-from app.domain.boardroom.models import StartupBrief
+from app.domain.boardroom.models import MEETING_MODES, StartupBrief
 
 
 class StartupBriefRequest(BaseModel):
@@ -18,6 +18,7 @@ class StartupBriefRequest(BaseModel):
     target_audience: str = Field(min_length=3, max_length=500)
     funding_stage: str = Field(min_length=2, max_length=80)
     business_model: str = Field(min_length=2, max_length=120)
+    meeting_mode: str = Field(default="full_board", max_length=80)
 
     @field_validator("competitors")
     @classmethod
@@ -28,6 +29,12 @@ class StartupBriefRequest(BaseModel):
             if cleaned and cleaned not in normalized:
                 normalized.append(cleaned)
         return normalized
+
+    @field_validator("meeting_mode")
+    @classmethod
+    def normalize_meeting_mode(cls, value: str) -> str:
+        normalized = value.strip().lower().replace(" ", "_").replace("-", "_")
+        return normalized if normalized in MEETING_MODES else "full_board"
 
     def to_domain(self) -> StartupBrief:
         return StartupBrief(
@@ -40,6 +47,7 @@ class StartupBriefRequest(BaseModel):
             target_audience=self.target_audience.strip(),
             funding_stage=self.funding_stage.strip(),
             business_model=self.business_model.strip(),
+            meeting_mode=self.meeting_mode,
         )
 
 
@@ -53,6 +61,7 @@ class StartupBriefResponse(BaseModel):
     target_audience: str
     funding_stage: str
     business_model: str
+    meeting_mode: str = "full_board"
 
 
 class StartupIdeaGenerationRequest(BaseModel):

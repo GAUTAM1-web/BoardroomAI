@@ -14,7 +14,7 @@ Version prefix:
 
 ## GET /api/v1/executives
 
-Returns the 18 executive profiles used by the boardroom.
+Returns the 19 executive profiles used by the boardroom, including the permanent Risk Officer.
 
 ## POST /api/v1/startup-ideas/generate
 
@@ -76,9 +76,21 @@ Creates and persists a completed board meeting from a founder brief.
   "competitors": ["Ramp", "Brex", "QuickBooks"],
   "target_audience": "clinic owners with 5-50 employees",
   "funding_stage": "pre-seed",
-  "business_model": "B2B SaaS"
+  "business_model": "B2B SaaS",
+  "meeting_mode": "full_board"
 }
 ```
+
+Supported `meeting_mode` values:
+
+- `full_board`
+- `quick_review`
+- `emergency_meeting`
+- `investor_pitch`
+- `expansion_review`
+- `pivot_review`
+- `acquisition_review`
+- `crisis_meeting`
 
 ### Response
 
@@ -92,13 +104,15 @@ The response includes:
 - `votes`
 - `report`
 
-The report includes executive summary, startup overview, executive opinions, market analysis, competitor analysis, SWOT, financial analysis, risk matrix, action plan, VC readiness score, board vote, confidence scores, and the original Milestone 1 operating sections.
+The report includes evidence packet, strategic options A/B/C, decision matrix, executive summary, startup overview, executive opinions, market analysis, competitor analysis, SWOT, financial analysis, risk matrix, action plan, VC readiness score, board vote, confidence scores, confidence timeline, vote timeline, reasoning flow, meeting replay, executive scorecards, visual reasoning heatmap, final decision brief, and the original Milestone 1 operating sections.
 
 The legacy startup idea field `success_probability` is kept for backward compatibility. Treat it as a heuristic score, not a guarantee of business success.
 
 ## WebSocket /api/v1/board-meetings/live
 
 Starts a live persisted board meeting. The client connects, then sends the same founder brief JSON used by `POST /api/v1/board-meetings` as the first WebSocket message.
+
+The first `meeting_started` event includes the selected `meeting_mode`, invited `executives`, risk `assessment`, and an evidence packet. Report sections then stream one artifact at a time, including replay and confidence history.
 
 ### Event Envelope
 
@@ -143,6 +157,8 @@ Returns dashboard statistics:
 ## GET /api/v1/business-data/providers
 
 Returns configured provider mode, map provider name, whether live map/place credentials are configured, and the supported data modes.
+
+This endpoint is safe for the Settings workspace. It returns provider names and boolean configuration status only; API keys and provider secrets are never returned.
 
 Supported modes:
 
@@ -282,7 +298,7 @@ Query parameters:
 
 ## GET /api/v1/board-meetings/{meeting_id}
 
-Returns a persisted meeting with startup brief, turns, votes, report sections, favorite state, status, and timestamps.
+Returns a persisted meeting with startup brief, meeting mode, turns, votes, report sections, favorite state, status, and timestamps.
 
 ## PATCH /api/v1/board-meetings/{meeting_id}/favorite
 
@@ -333,6 +349,7 @@ Live and synchronous meetings persist to PostgreSQL:
 - provisional and changed votes in `vote_events`
 - final votes in `board_votes`
 - report and streamed report sections in `final_reports` and `report_sections`
+- selected founder brief meeting mode in `startup_briefs.meeting_mode`
 - favorite state in `board_meetings`
 - business analyses in `business_analyses`
 - reusable evidence records in `business_evidence_records`

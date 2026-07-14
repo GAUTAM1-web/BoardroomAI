@@ -191,10 +191,16 @@ class LocalExecutiveIntelligenceProvider:
             f"'{brief.startup_idea}' must address "
             f"that {RISK_LABELS[strongest]}. The CEO thesis is directionally useful, but it needs "
             f"measurable gates before the board should treat it as an operating plan. "
+            f"My reasoning lens is {profile.reasoning_style}. "
             f"My follow-up question: {follow_up}"
         )
 
     def _challenge_for_role(self, role: str, opening_role: str) -> str:
+        if role == "Risk Officer":
+            return (
+                f"I am challenging the {opening_role}'s unsupported assumptions before the board "
+                "converts optimism into spend."
+            )
         if role in {"CFO", "Legal Advisor", "Cybersecurity Expert"}:
             return f"I am challenging the {opening_role}'s assumption that speed is the main risk."
         if role in {"Growth Strategist", "CMO", "Investor", "VC Partner"}:
@@ -205,6 +211,7 @@ class LocalExecutiveIntelligenceProvider:
 
     def _follow_up_question(self, role: str, brief: StartupBrief) -> str:
         questions = {
+            "Risk Officer": "What evidence would make us stop, pivot, or refuse approval?",
             "CFO": (
                 "Which three paid pilots can validate willingness to pay inside "
                 f"{brief.budget:,.0f}?"
@@ -262,6 +269,10 @@ class LocalExecutiveIntelligenceProvider:
 
     def _opportunity_for_role(self, role: str, brief: StartupBrief) -> str:
         opportunities = {
+            "Risk Officer": (
+                f"{role}: turn the stop-or-pivot criteria into a trust signal for founders, "
+                "investors, and early customers."
+            ),
             "CMO": (
                 f"{role}: package the first case study as a category narrative "
                 f"for {brief.industry}."

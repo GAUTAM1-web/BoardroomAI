@@ -33,3 +33,4 @@ Thumbs.db
 coverage/
 htmlcov/
 *.log
+frontend/release/

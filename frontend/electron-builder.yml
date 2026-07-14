@@ -1,0 +1,54 @@
+appId: com.boardroomai.desktop
+productName: Boardroom AI
+copyright: Copyright 2026 Boardroom AI
+asar: true
+afterPack: electron/after-pack.cjs
+
+directories:
+  output: release
+  buildResources: electron/build
+
+files:
+  - electron/**/*
+  - package.json
+
+extraResources:
+  - from: .next/standalone
+    to: app
+    filter:
+      - "**/*"
+  - from: .next/static
+    to: app/.next/static
+    filter:
+      - "**/*"
+  - from: public
+    to: app/public
+    filter:
+      - "**/*"
+  - from: electron/build
+    to: assets
+    filter:
+      - "**/*"
+
+win:
+  icon: electron/build/icon.ico
+  executableName: BoardroomAI
+  signExecutable: false
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-Setup-${version}.${ext}
+  shortcutName: Boardroom AI
+  uninstallDisplayName: Boardroom AI
+
+portable:
+  artifactName: ${productName}-Portable-${version}.${ext}

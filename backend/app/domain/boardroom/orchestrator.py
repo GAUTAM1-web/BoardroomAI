@@ -7,12 +7,14 @@ from app.domain.boardroom.models import (
     BoardMeetingResult,
     BoardVote,
     ExecutiveOpinion,
+    ExecutiveProfile,
     MeetingTurn,
     StartupBrief,
+    StrategicAssessment,
 )
 from app.domain.boardroom.provider import ExecutiveIntelligenceProvider
 from app.domain.boardroom.report import build_report
-from app.domain.boardroom.roles import EXECUTIVE_PROFILES
+from app.domain.boardroom.roles import select_executive_profiles
 
 
 class BoardMeetingOrchestrator:
@@ -21,27 +23,40 @@ class BoardMeetingOrchestrator:
 
     def run(self, brief: StartupBrief) -> BoardMeetingResult:
         assessment = assess_brief(brief)
-        ceo = EXECUTIVE_PROFILES[0]
+        profiles = select_executive_profiles(brief)
+        ceo = profiles[0]
         opening = self.provider.propose_strategy(brief, assessment, ceo)
 
         turns: list[MeetingTurn] = [
             self._turn(round_number=1, turn_type="proposal", opinion=opening)
         ]
 
+        devil_opinion = self._devil_opinion(brief, assessment, profiles, opening)
+        if devil_opinion is not None:
+            turns.append(
+                self._turn(
+                    round_number=2,
+                    turn_type="assumption_challenge",
+                    opinion=devil_opinion,
+                )
+            )
+
         critiques = tuple(
             self.provider.critique_strategy(brief, assessment, profile, opening)
-            for profile in EXECUTIVE_PROFILES[1:]
+            for profile in profiles[1:]
+            if profile.role != "Risk Officer"
         )
         turns.extend(
             self._turn(round_number=2, turn_type="critique", opinion=critique)
             for critique in critiques
         )
 
-        revision = self.provider.revise_strategy(brief, assessment, critiques)
+        all_critiques = tuple(opinion for opinion in (devil_opinion, *critiques) if opinion)
+        revision = self.provider.revise_strategy(brief, assessment, all_critiques)
         turns.append(self._turn(round_number=3, turn_type="revision", opinion=revision))
 
-        mitigation_strength = self._mitigation_strength(revision, critiques)
-        all_opinions = (opening, *critiques)
+        mitigation_strength = self._mitigation_strength(revision, all_critiques)
+        all_opinions = (opening, *all_critiques)
         votes = tuple(
             self.provider.vote(
                 profile,
@@ -49,7 +64,7 @@ class BoardMeetingOrchestrator:
                 assessment,
                 mitigation_strength,
             )
-            for profile in EXECUTIVE_PROFILES
+            for profile in profiles
         )
 
         consensus_reached = self._is_consensus(votes)
@@ -63,6 +78,7 @@ class BoardMeetingOrchestrator:
             votes=votes,
             decision=decision,
             aggregate_confidence=aggregate_confidence,
+            invited_executives=tuple(profile.role for profile in profiles),
         )
 
         return BoardMeetingResult(
@@ -93,6 +109,21 @@ class BoardMeetingOrchestrator:
             if opinion.role == role:
                 return opinion
         return opinions[0]
+
+    def _devil_opinion(
+        self,
+        brief: StartupBrief,
+        assessment: StrategicAssessment,
+        profiles: tuple[ExecutiveProfile, ...],
+        opening: ExecutiveOpinion,
+    ) -> ExecutiveOpinion | None:
+        risk_profile = next(
+            (profile for profile in profiles if profile.role == "Risk Officer"),
+            None,
+        )
+        if risk_profile is None:
+            return None
+        return self.provider.critique_strategy(brief, assessment, risk_profile, opening)
 
     def _mitigation_strength(
         self,

@@ -8,6 +8,7 @@ from typing import Any, Protocol
 from uuid import UUID, uuid4
 
 from app.domain.boardroom.assessment import assess_brief, clamp
+from app.domain.boardroom.intelligence import build_evidence_packet
 from app.domain.boardroom.memory import ExecutiveMemory
 from app.domain.boardroom.models import (
     BoardMeetingResult,
@@ -21,10 +22,13 @@ from app.domain.boardroom.models import (
 )
 from app.domain.boardroom.provider import ExecutiveIntelligenceProvider
 from app.domain.boardroom.report import build_report
-from app.domain.boardroom.roles import EXECUTIVE_PROFILES
+from app.domain.boardroom.roles import select_executive_profiles
 
 REPORT_SECTION_TITLES = {
     "executive_summary": "Executive Summary",
+    "evidence_packet": "Evidence Packet",
+    "strategic_options": "Strategic Options",
+    "decision_matrix": "Decision Matrix",
     "startup_overview": "Startup Overview",
     "executive_opinions": "Executive Opinions",
     "business_plan": "Business Plan",
@@ -48,11 +52,19 @@ REPORT_SECTION_TITLES = {
     "ninety_day_roadmap": "90-Day Roadmap",
     "board_vote": "Board Vote",
     "confidence_scores": "Confidence Scores",
+    "confidence_timeline": "Confidence Timeline",
+    "vote_timeline": "Vote Timeline",
+    "reasoning_flow": "Reasoning Flow",
+    "meeting_replay": "Meeting Replay",
+    "executive_scorecard": "Executive Scorecard",
+    "visual_reasoning_heatmap": "Visual Reasoning Heatmap",
+    "final_decision_brief": "Final Decision Brief",
 }
 
 
 STATUS_BY_ROLE = {
     "CEO": "CEO is thinking...",
+    "Risk Officer": "Risk Officer is challenging assumptions...",
     "CTO": "CTO is researching...",
     "CFO": "CFO is calculating...",
     "Investor": "Investor is reviewing...",
@@ -207,6 +219,7 @@ class LiveBoardMeetingOrchestrator:
         active_recorder = recorder or NoopMeetingRecorder()
         active_meeting_id = meeting_id or uuid4()
         assessment = assess_brief(brief)
+        profiles = select_executive_profiles(brief)
         sequence = 0
         memory = ExecutiveMemory()
         opinions: list[ExecutiveOpinion] = []
@@ -230,14 +243,16 @@ class LiveBoardMeetingOrchestrator:
                             key: round(value, 3) for key, value in assessment.risk_scores.items()
                         },
                         "signals": assessment.signals,
+                        "evidence": build_evidence_packet(brief, assessment),
                     },
-                    "executives": [profile.role for profile in EXECUTIVE_PROFILES],
+                    "executives": [profile.role for profile in profiles],
+                    "meeting_mode": brief.normalized_meeting_mode,
                 },
             ),
         )
 
         opening: ExecutiveOpinion | None = None
-        for index, profile in enumerate(EXECUTIVE_PROFILES):
+        for index, profile in enumerate(profiles):
             await self._sleep()
             sequence += 1
             yield await self._emit(
@@ -279,7 +294,7 @@ class LiveBoardMeetingOrchestrator:
                 opinion = self.provider.critique_strategy(brief, assessment, profile, opening)
                 opinion = memory.contextualize(opinion)
                 round_number = 2
-                turn_type = "critique"
+                turn_type = "assumption_challenge" if profile.role == "Risk Officer" else "critique"
 
             opinions.append(opinion)
             previous_confidence = confidence_by_role[profile.role]
@@ -358,7 +373,7 @@ class LiveBoardMeetingOrchestrator:
 
         mitigation_strength = self._mitigation_strength(revision, critiques)
         final_votes: list[BoardVote] = []
-        for profile in EXECUTIVE_PROFILES:
+        for profile in profiles:
             base_opinion = self._opinion_for(profile.role, tuple(opinions))
             final_vote = self.provider.vote(profile, base_opinion, assessment, mitigation_strength)
             final_votes.append(final_vote)
@@ -403,6 +418,7 @@ class LiveBoardMeetingOrchestrator:
             votes=votes,
             decision=decision,
             aggregate_confidence=aggregate_confidence,
+            invited_executives=tuple(profile.role for profile in profiles),
         )
         await active_recorder.persist_report(active_meeting_id, report)
 

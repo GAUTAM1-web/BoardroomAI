@@ -4,6 +4,17 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
+MEETING_MODES = {
+    "quick_review",
+    "full_board",
+    "emergency_meeting",
+    "investor_pitch",
+    "expansion_review",
+    "pivot_review",
+    "acquisition_review",
+    "crisis_meeting",
+}
+
 
 @dataclass(frozen=True)
 class StartupBrief:
@@ -16,6 +27,7 @@ class StartupBrief:
     target_audience: str
     funding_stage: str
     business_model: str
+    meeting_mode: str = "full_board"
 
     def normalized_text(self) -> str:
         return " ".join(
@@ -26,9 +38,14 @@ class StartupBrief:
                 self.target_audience,
                 self.funding_stage,
                 self.business_model,
+                self.meeting_mode,
                 " ".join(self.competitors),
             ]
         ).lower()
+
+    @property
+    def normalized_meeting_mode(self) -> str:
+        return self.meeting_mode if self.meeting_mode in MEETING_MODES else "full_board"
 
 
 @dataclass(frozen=True)
@@ -40,6 +57,7 @@ class ExecutiveProfile:
     risk_focus: tuple[str, ...]
     optimism_bias: float
     veto_threshold: float
+    reasoning_style: str = "balanced executive reasoning"
 
 
 @dataclass(frozen=True)

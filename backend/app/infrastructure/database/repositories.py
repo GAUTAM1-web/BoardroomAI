@@ -16,7 +16,7 @@ from app.domain.boardroom.models import (
     StartupBrief,
     StrategicAssessment,
 )
-from app.domain.boardroom.roles import EXECUTIVE_PROFILES
+from app.domain.boardroom.roles import EXECUTIVE_PROFILES, select_executive_profiles
 from app.domain.boardroom.streaming import REPORT_SECTION_TITLES, BoardroomStreamEvent
 from app.infrastructure.database.models import (
     BoardMeetingRecord,
@@ -58,6 +58,7 @@ class PostgresMeetingRepository:
             target_audience=brief.target_audience,
             funding_stage=brief.funding_stage,
             business_model=brief.business_model,
+            meeting_mode=brief.normalized_meeting_mode,
         )
         meeting = BoardMeetingRecord(
             id=meeting_id,
@@ -77,7 +78,7 @@ class PostgresMeetingRepository:
         )
         self.session.add(startup_brief)
         self.session.add(meeting)
-        for profile in EXECUTIVE_PROFILES:
+        for profile in select_executive_profiles(brief):
             self.session.add(
                 ExecutiveAgentRecord(
                     board_meeting_id=meeting_id,
@@ -649,6 +650,7 @@ class PostgresMeetingRepository:
             "target_audience": record.target_audience,
             "funding_stage": record.funding_stage,
             "business_model": record.business_model,
+            "meeting_mode": record.meeting_mode,
         }
 
     def _turn_dict(self, record: MeetingTurnRecord) -> dict[str, object]:
