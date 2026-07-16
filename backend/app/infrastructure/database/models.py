@@ -12,6 +12,339 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.infrastructure.database.base import Base
 
 
+class EnterpriseOrganizationRecord(Base):
+    __tablename__ = "enterprise_organizations"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    slug: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="active")
+    default_locale: Mapped[str] = mapped_column(String(16), nullable=False, default="en")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class EnterpriseDepartmentRecord(Base):
+    __tablename__ = "enterprise_departments"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class EnterpriseTeamRecord(Base):
+    __tablename__ = "enterprise_teams"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    department_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_departments.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class EnterpriseUserRecord(Base):
+    __tablename__ = "enterprise_users"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    display_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    email: Mapped[str] = mapped_column(String(240), nullable=False, unique=True)
+    locale: Mapped[str] = mapped_column(String(16), nullable=False, default="en")
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="active")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class EnterpriseMembershipRecord(Base):
+    __tablename__ = "enterprise_memberships"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    team_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_teams.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    role: Mapped[str] = mapped_column(String(60), nullable=False)
+    permissions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class MeetingCollaboratorRecord(Base):
+    __tablename__ = "meeting_collaborators"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    board_meeting_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("board_meetings.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="joined")
+    joined_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ReportCommentRecord(Base):
+    __tablename__ = "report_comments"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    board_meeting_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("board_meetings.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    parent_comment_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("report_comments.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    author_user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    section_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    mentions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="open")
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ApprovalWorkflowRecord(Base):
+    __tablename__ = "approval_workflows"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    board_meeting_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("board_meetings.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    business_analysis_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("business_analyses.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending")
+    requested_by_user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ApprovalStepRecord(Base):
+    __tablename__ = "approval_steps"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    workflow_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("approval_workflows.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    approver_user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    role: Mapped[str] = mapped_column(String(60), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending")
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EnterpriseTaskRecord(Base):
+    __tablename__ = "enterprise_tasks"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    board_meeting_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("board_meetings.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    business_analysis_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("business_analyses.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    assignee_user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    title: Mapped[str] = mapped_column(String(220), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(80), nullable=False, default="manual")
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="open")
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class CalendarEventRecord(Base):
+    __tablename__ = "calendar_events"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    title: Mapped[str] = mapped_column(String(220), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    related_entity_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    related_entity_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class EnterpriseNotificationRecord(Base):
+    __tablename__ = "enterprise_notifications"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_users.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    channel: Mapped[str] = mapped_column(String(40), nullable=False, default="in_app")
+    title: Mapped[str] = mapped_column(String(220), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="unread")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class KnowledgeItemRecord(Base):
+    __tablename__ = "knowledge_items"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    title: Mapped[str] = mapped_column(String(220), nullable=False)
+    item_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    source_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    source_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ReportTemplateRecord(Base):
+    __tablename__ = "report_templates"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_organizations.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    category: Mapped[str] = mapped_column(String(80), nullable=False)
+    locale: Mapped[str] = mapped_column(String(16), nullable=False, default="en")
+    sections: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class AuditEventRecord(Base):
+    __tablename__ = "audit_events"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_organizations.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    actor_user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    action: Mapped[str] = mapped_column(String(120), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    entity_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    details: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class StartupBriefRecord(Base):
     __tablename__ = "startup_briefs"
 
@@ -41,6 +374,16 @@ class BoardMeetingRecord(Base):
     __tablename__ = "board_meetings"
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_organizations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     startup_brief_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("startup_briefs.id", ondelete="CASCADE"), nullable=False
     )
@@ -248,6 +591,16 @@ class BusinessAnalysisRecord(Base):
     __tablename__ = "business_analyses"
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_organizations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("enterprise_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     workflow_type: Mapped[str] = mapped_column(String(60), nullable=False)
     business_idea: Mapped[str] = mapped_column(Text, nullable=False)
     business_category: Mapped[str] = mapped_column(String(160), nullable=False)

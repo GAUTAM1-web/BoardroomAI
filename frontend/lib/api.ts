@@ -6,6 +6,7 @@ import type {
   BusinessAnalysisSummary,
   BusinessProviderStatus,
   DashboardSnapshot,
+  EnterpriseDashboard,
   GlobalSearchResults,
   MeetingSummary,
   StartupBriefPayload,
@@ -131,6 +132,16 @@ export async function fetchDashboard(): Promise<DashboardSnapshot> {
       cache: "no-store"
     },
     "Dashboard failed to load"
+  );
+}
+
+export async function fetchEnterpriseDashboard(): Promise<EnterpriseDashboard> {
+  return requestJson<EnterpriseDashboard>(
+    `${API_PREFIX}/enterprise/dashboard`,
+    {
+      cache: "no-store"
+    },
+    "Enterprise workspace failed to load"
   );
 }
 

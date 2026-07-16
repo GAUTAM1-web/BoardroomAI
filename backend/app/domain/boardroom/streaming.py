@@ -8,7 +8,11 @@ from typing import Any, Protocol
 from uuid import UUID, uuid4
 
 from app.domain.boardroom.assessment import assess_brief, clamp
-from app.domain.boardroom.intelligence import build_evidence_packet
+from app.domain.boardroom.intelligence import (
+    build_evidence_packet,
+    build_executive_challenge_questions,
+    build_internal_research,
+)
 from app.domain.boardroom.memory import ExecutiveMemory
 from app.domain.boardroom.models import (
     BoardMeetingResult,
@@ -26,9 +30,16 @@ from app.domain.boardroom.roles import select_executive_profiles
 
 REPORT_SECTION_TITLES = {
     "executive_summary": "Executive Summary",
+    "internal_research": "Internal Research",
+    "reasoning_pipeline": "Reasoning Pipeline",
     "evidence_packet": "Evidence Packet",
     "strategic_options": "Strategic Options",
     "decision_matrix": "Decision Matrix",
+    "counterfactual_analysis": "Counterfactual Analysis",
+    "scenario_simulator": "Scenario Simulator",
+    "cognitive_bias_detection": "Cognitive Bias Detection",
+    "executive_challenge_questions": "Executive Challenge Questions",
+    "dynamic_expert_roster": "Dynamic Expert Roster",
     "startup_overview": "Startup Overview",
     "executive_opinions": "Executive Opinions",
     "business_plan": "Business Plan",
@@ -53,11 +64,19 @@ REPORT_SECTION_TITLES = {
     "board_vote": "Board Vote",
     "confidence_scores": "Confidence Scores",
     "confidence_timeline": "Confidence Timeline",
+    "confidence_propagation": "Confidence Propagation",
     "vote_timeline": "Vote Timeline",
     "reasoning_flow": "Reasoning Flow",
+    "debate_tree": "Debate Tree",
+    "boardroom_timeline": "Boardroom Timeline",
     "meeting_replay": "Meeting Replay",
     "executive_scorecard": "Executive Scorecard",
+    "executive_performance_tracking": "Executive Performance Tracking",
     "visual_reasoning_heatmap": "Visual Reasoning Heatmap",
+    "decision_explainability": "Decision Explainability",
+    "validation_plan": "Validation Plan",
+    "ai_reflection": "AI Reflection",
+    "decision_journal": "Decision Journal",
     "final_decision_brief": "Final Decision Brief",
 }
 
@@ -244,6 +263,15 @@ class LiveBoardMeetingOrchestrator:
                         },
                         "signals": assessment.signals,
                         "evidence": build_evidence_packet(brief, assessment),
+                        "internal_research": build_internal_research(
+                            brief,
+                            assessment,
+                            profiles=profiles,
+                        ),
+                        "challenge_questions": build_executive_challenge_questions(
+                            brief,
+                            assessment,
+                        ),
                     },
                     "executives": [profile.role for profile in profiles],
                     "meeting_mode": brief.normalized_meeting_mode,

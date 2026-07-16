@@ -4,7 +4,7 @@ Boardroom AI is an AI-powered operating system for founders. It turns a startup 
 
 Milestone 5 expands the product into an evidence-based business decision platform for technology startups, local businesses, service businesses, shop/location evaluation, supplier planning, validation, and post-launch performance review.
 
-Milestone 6 upgrades the board itself into an evidence-first executive intelligence layer with permanent executive personalities, dynamic meeting modes, devil's advocate review, confidence timelines, replayable decisions, and final decision briefs.
+Milestone 6 upgrades the board itself into an evidence-first executive intelligence layer with permanent executive personalities, dynamic meeting modes, devil's advocate review, confidence timelines, replayable decisions, and final decision briefs. Executive Intelligence Engine V2 adds silent internal research, a staged reasoning pipeline, debate trees, confidence propagation, counterfactuals, scenario simulation, cognitive-bias detection, AI reflection, and a decision journal.
 
 ## Current Capabilities
 
@@ -15,8 +15,9 @@ Milestone 6 upgrades the board itself into an evidence-first executive intellige
 - Manual founder brief creation remains available.
 - Live boardroom with 19 executive roles, including a permanent Risk Officer devil's advocate, active speaker indicators, status animation, confidence changes, vote changes, timeline, risk signals, and streamed report sections.
 - Dynamic meeting modes: full board, quick review, emergency meeting, investor pitch, expansion review, pivot review, acquisition review, and crisis meeting.
+- Relevant specialist seats can join a meeting when the brief calls for them, such as medical, compliance, cloud, AI, pricing, inventory, store operations, chef, food safety, and supply-chain specialists.
 - Smarter deterministic executive debate with role personalities, reasoning styles, challenges, agreement, disagreement, follow-up questions, pivots, partnerships, risk discovery, memory references, and non-repetitive critique.
-- Professional board report after every meeting, including evidence packet, strategic options A/B/C, decision matrix, executive summary, startup overview, executive opinions, SWOT, competitors, market analysis, financial analysis, risk matrix, action plan, VC readiness scores, vote detail, confidence scores, confidence timeline, vote timeline, reasoning flow, meeting replay, executive scorecards, visual reasoning heatmap, and final decision brief.
+- Professional board report after every meeting, including internal research, reasoning pipeline, evidence packet, strategic options A/B/C, decision matrix, counterfactual analysis, scenario simulator, cognitive-bias detection, executive challenge questions, dynamic expert roster, confidence propagation, debate tree, boardroom timeline, meeting replay, executive scorecards, executive performance tracking, decision explainability, validation plan, AI reflection, decision journal, and final decision brief.
 - History for previous meetings with search, filters, favorites, compare, report preview, relaunch, delete, and re-download.
 - Export support for PDF, Markdown, and JSON.
 - Professional Settings workspace with provider status, maps status, redacted API-key posture, theme preference, data-mode status, export defaults, and client diagnostics.

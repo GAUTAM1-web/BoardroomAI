@@ -27,8 +27,12 @@ def test_board_meeting_includes_every_executive_vote() -> None:
 
     result = orchestrator.run(_brief())
 
-    assert len(result.votes) == len(EXECUTIVE_PROFILES)
-    assert {vote.role for vote in result.votes} == {profile.role for profile in EXECUTIVE_PROFILES}
+    permanent_roles = {profile.role for profile in EXECUTIVE_PROFILES}
+    vote_roles = {vote.role for vote in result.votes}
+
+    assert len(result.votes) >= len(EXECUTIVE_PROFILES)
+    assert permanent_roles.issubset(vote_roles)
+    assert {"Medical Advisor", "Compliance Specialist", "Pricing Analyst"}.issubset(vote_roles)
     assert all(0.0 < vote.confidence <= 1.0 for vote in result.votes)
 
 
@@ -39,9 +43,16 @@ def test_board_meeting_generates_required_report_sections() -> None:
 
     required_sections = {
         "executive_summary",
+        "internal_research",
+        "reasoning_pipeline",
         "evidence_packet",
         "strategic_options",
         "decision_matrix",
+        "counterfactual_analysis",
+        "scenario_simulator",
+        "cognitive_bias_detection",
+        "executive_challenge_questions",
+        "dynamic_expert_roster",
         "startup_overview",
         "executive_opinions",
         "business_plan",
@@ -66,11 +77,19 @@ def test_board_meeting_generates_required_report_sections() -> None:
         "board_vote",
         "confidence_scores",
         "confidence_timeline",
+        "confidence_propagation",
         "vote_timeline",
         "reasoning_flow",
+        "debate_tree",
+        "boardroom_timeline",
         "meeting_replay",
         "executive_scorecard",
+        "executive_performance_tracking",
         "visual_reasoning_heatmap",
+        "decision_explainability",
+        "validation_plan",
+        "ai_reflection",
+        "decision_journal",
         "final_decision_brief",
     }
 
@@ -78,6 +97,11 @@ def test_board_meeting_generates_required_report_sections() -> None:
     assert result.report.sections["confidence_scores"]["aggregate"] == round(
         result.aggregate_confidence, 3
     )
+    assert result.report.sections["reasoning_pipeline"]["stages"][0]["stage"] == (
+        "Understand the business"
+    )
+    assert len(result.report.sections["scenario_simulator"]) == 5
+    assert result.report.sections["decision_journal"]["outcome"] == "not recorded yet"
 
 
 def test_board_meeting_contains_dissent_and_revision() -> None:

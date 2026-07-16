@@ -6,7 +6,7 @@ Boardroom AI turns a founder's startup brief into an executive board meeting. Th
 
 Milestone 5 extends that intent beyond startup reports into evidence-based business decisions: discover, compare, validate, plan, launch, track, improve, and decide whether to expand, pivot, or exit.
 
-Milestone 6 upgrades the boardroom layer itself: meetings now begin from explicit evidence packets, route through dynamic meeting modes, include a permanent Risk Officer devil's advocate, and generate replayable decision artifacts instead of a static report snapshot.
+Milestone 6 upgrades the boardroom layer itself: meetings now begin from explicit evidence packets, route through dynamic meeting modes, include a permanent Risk Officer devil's advocate, and generate replayable decision artifacts instead of a static report snapshot. Executive Intelligence Engine V2 deepens that layer with silent internal research, staged reasoning, debate trees, confidence propagation, counterfactuals, scenario simulation, cognitive-bias detection, AI reflection, and an append-only decision journal.
 
 ## System Boundaries
 
@@ -58,9 +58,10 @@ Domain responsibilities:
 - load executive role definitions
 - score market, financial, operational, legal, growth, and technology risk
 - select the right executive roster for full board, quick review, emergency, investor, expansion, pivot, acquisition, or crisis meetings
+- invite relevant dynamic specialists for the meeting, without adding them to every permanent board
 - run proposal, assumption challenge, critique, revision, vote, and consensus phases
 - produce a structured board report
-- produce evidence packets, strategic options, decision matrices, confidence timelines, vote timelines, reasoning flow, meeting replay, executive scorecards, visual reasoning heatmaps, and final decision briefs
+- produce internal research packets, reasoning pipelines, evidence packets, strategic options, decision matrices, debate trees, confidence propagation, counterfactuals, scenario simulators, bias detection, challenge questions, boardroom timelines, meeting replay, executive scorecards, performance tracking, explainability, validation plans, AI reflection, decision journals, and final decision briefs
 - produce local-business decision briefs from evidence, user inputs, and labeled assumptions
 - calculate Opportunity Score, procurement needs, setup cost, daily-sales targets, and validation tasks
 - distinguish verified facts, user-provided information, configurable benchmarks, assumptions, unknowns, and demo-only scaffolding
@@ -94,6 +95,8 @@ Milestone 2 adds a live streaming orchestrator beside the synchronous orchestrat
 Milestone 3 adds the founder operating workspace on top of the same contracts: deterministic startup idea generation, dashboard metrics, meeting history, global search, favorites, compare, delete, and report exports. These features reuse persisted meetings and report sections instead of introducing a separate artifact store.
 
 Milestone 6 adds executive intelligence without changing the provider contract. Profiles now carry permanent reasoning styles, the orchestrator selects an executive subset from the requested meeting mode, the Risk Officer challenges unsupported assumptions before functional critiques, and the report builder assembles evidence-first decision artifacts from the same deterministic meeting state.
+
+Executive Intelligence Engine V2 keeps the same API surface but changes the decision product. Before discussion starts, the system creates an internal research packet from founder-provided facts, assumptions, unknowns, contradictions, and confidence. The report then records the full reasoning pipeline: objectives, constraints, hypotheses, evidence quality, alternative strategies, challenges, revisions, votes, validation steps, and reflection. The engine never invents suppliers, market sources, customers, or live evidence; unavailable facts remain explicit unknowns.
 
 Future provider routing:
 
@@ -163,7 +166,7 @@ The board includes:
 
 Each role has independent goals, personality, decision lens, confidence behavior, disagreement thresholds, and vote semantics.
 
-Meeting modes select a subset of that board when speed or context matters. `full_board` invites every executive; other modes always include the CEO and Risk Officer, then add the most relevant finance, operations, market, legal, security, investor, product, or data voices based on the mode and startup brief.
+Meeting modes select a subset of that board when speed or context matters. `full_board` invites every permanent executive; other modes always include the CEO and Risk Officer, then add the most relevant finance, operations, market, legal, security, investor, product, or data voices based on the mode and startup brief. Domain-specific specialists can also join only when relevant, including Chef, Food Safety Specialist, Supply Chain Specialist, Cloud Architect, AI Engineer, Inventory Specialist, Store Operations Specialist, Pricing Analyst, Medical Advisor, and Compliance Specialist.
 
 ## Database Design
 

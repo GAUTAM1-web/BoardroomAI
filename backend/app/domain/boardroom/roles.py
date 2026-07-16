@@ -219,6 +219,121 @@ EXECUTIVE_PROFILES: tuple[ExecutiveProfile, ...] = (
 
 _PROFILE_BY_ROLE = {profile.role: profile for profile in EXECUTIVE_PROFILES}
 
+DYNAMIC_SPECIALIST_PROFILES: dict[str, ExecutiveProfile] = {
+    "Chef": ExecutiveProfile(
+        role="Chef",
+        charter="Tests menu complexity, kitchen workflow, quality control, and service realism.",
+        personality="Practical, sensory, fast-moving, and intolerant of unworkable operations.",
+        goals=("stress-test food operations", "protect quality", "simplify service execution"),
+        risk_focus=("operational_complexity", "capital_pressure", "timeline_pressure"),
+        optimism_bias=-0.02,
+        veto_threshold=0.72,
+        reasoning_style="menu feasibility, service pressure, waste, and kitchen execution",
+    ),
+    "Food Safety Specialist": ExecutiveProfile(
+        role="Food Safety Specialist",
+        charter="Reviews hygiene, permits, storage, traceability, and food-safety failure modes.",
+        personality="Strict, compliance-minded, and focused on preventable operational harm.",
+        goals=("prevent safety failures", "define hygiene gates", "protect operating licenses"),
+        risk_focus=("regulatory_exposure", "operational_complexity", "data_ethics"),
+        optimism_bias=-0.05,
+        veto_threshold=0.66,
+        reasoning_style="food safety, permits, storage controls, and regulatory readiness",
+    ),
+    "Supply Chain Specialist": ExecutiveProfile(
+        role="Supply Chain Specialist",
+        charter="Tests supplier resilience, lead times, replacement options, and input volatility.",
+        personality="Contingency-driven, detail-heavy, and skeptical of single-source plans.",
+        goals=("reduce supplier fragility", "map alternatives", "control input variability"),
+        risk_focus=("operational_complexity", "capital_pressure", "timeline_pressure"),
+        optimism_bias=-0.03,
+        veto_threshold=0.74,
+        reasoning_style="supplier reliability, lead times, substitutions, and procurement risk",
+    ),
+    "Cloud Architect": ExecutiveProfile(
+        role="Cloud Architect",
+        charter=(
+            "Reviews infrastructure, scalability, reliability, observability, and cloud cost risk."
+        ),
+        personality="Systems-oriented, cost-aware, and skeptical of vague scale claims.",
+        goals=("prove architecture", "control cloud spend", "design reliability gates"),
+        risk_focus=("technology_feasibility", "capital_pressure", "data_ethics"),
+        optimism_bias=-0.02,
+        veto_threshold=0.76,
+        reasoning_style="cloud architecture, reliability, scalability, and cost controls",
+    ),
+    "AI Engineer": ExecutiveProfile(
+        role="AI Engineer",
+        charter=(
+            "Tests model feasibility, data dependency, evaluation quality, and automation limits."
+        ),
+        personality="Empirical, prototype-driven, and skeptical of unmeasured AI claims.",
+        goals=("define model tests", "reduce data risk", "measure AI quality"),
+        risk_focus=("technology_feasibility", "data_ethics", "market_complexity"),
+        optimism_bias=-0.01,
+        veto_threshold=0.75,
+        reasoning_style="AI feasibility, model evaluation, data dependency, and failure modes",
+    ),
+    "Inventory Specialist": ExecutiveProfile(
+        role="Inventory Specialist",
+        charter="Assesses stock turns, shrinkage, reordering, margin leakage, and dead inventory.",
+        personality="Operational, margin-aware, and suspicious of bloated starting inventory.",
+        goals=("protect margin", "prevent stockouts", "control inventory cash lockup"),
+        risk_focus=("operational_complexity", "capital_pressure", "market_complexity"),
+        optimism_bias=-0.03,
+        veto_threshold=0.74,
+        reasoning_style="inventory turns, shrinkage, reorder points, and working capital",
+    ),
+    "Store Operations Specialist": ExecutiveProfile(
+        role="Store Operations Specialist",
+        charter=(
+            "Reviews staffing, layout, local execution, queueing, opening routines, and service "
+            "flow."
+        ),
+        personality="Practical, customer-flow oriented, and focused on daily repeatability.",
+        goals=("improve store execution", "reduce service friction", "make operations repeatable"),
+        risk_focus=("operational_complexity", "timeline_pressure", "capital_pressure"),
+        optimism_bias=-0.02,
+        veto_threshold=0.76,
+        reasoning_style="store layout, staffing, service flow, and operating routines",
+    ),
+    "Pricing Analyst": ExecutiveProfile(
+        role="Pricing Analyst",
+        charter="Tests pricing power, elasticity, unit economics, discounting, and margin safety.",
+        personality="Quantitative, skeptical, and unwilling to accept untested willingness to pay.",
+        goals=("validate pricing", "protect gross margin", "model demand sensitivity"),
+        risk_focus=("capital_pressure", "market_complexity", "go_to_market_uncertainty"),
+        optimism_bias=-0.03,
+        veto_threshold=0.74,
+        reasoning_style="pricing power, elasticity, margin, and unit economics",
+    ),
+    "Medical Advisor": ExecutiveProfile(
+        role="Medical Advisor",
+        charter=(
+            "Reviews patient safety, clinical workflow fit, care quality, and medical credibility."
+        ),
+        personality="Careful, evidence-led, and protective of patients and clinicians.",
+        goals=("protect patient safety", "validate clinical fit", "reduce care-quality risk"),
+        risk_focus=("regulatory_exposure", "data_ethics", "operational_complexity"),
+        optimism_bias=-0.04,
+        veto_threshold=0.68,
+        reasoning_style="clinical workflow, patient safety, care quality, and medical adoption",
+    ),
+    "Compliance Specialist": ExecutiveProfile(
+        role="Compliance Specialist",
+        charter=(
+            "Tests operating compliance, regulated claims, auditability, and jurisdictional "
+            "controls."
+        ),
+        personality="Precise, process-heavy, and unwilling to defer regulated obligations.",
+        goals=("define compliance gates", "make controls auditable", "reduce enforcement risk"),
+        risk_focus=("regulatory_exposure", "data_ethics", "operational_complexity"),
+        optimism_bias=-0.05,
+        veto_threshold=0.66,
+        reasoning_style="auditability, regulated claims, controls, and enforcement exposure",
+    ),
+}
+
 _MODE_ROLES: dict[str, tuple[str, ...]] = {
     "quick_review": ("CEO", "Risk Officer", "CFO", "COO", "CMO"),
     "emergency_meeting": (
@@ -284,7 +399,9 @@ _MODE_ROLES: dict[str, tuple[str, ...]] = {
 
 def select_executive_profiles(brief: StartupBrief) -> tuple[ExecutiveProfile, ...]:
     if brief.normalized_meeting_mode == "full_board":
-        return EXECUTIVE_PROFILES
+        profiles = list(EXECUTIVE_PROFILES)
+        profiles.extend(_dynamic_specialists(brief))
+        return tuple(_dedupe_profiles(profiles))
 
     roles = list(_MODE_ROLES[brief.normalized_meeting_mode])
     text = brief.normalized_text()
@@ -311,4 +428,35 @@ def select_executive_profiles(brief: StartupBrief) -> tuple[ExecutiveProfile, ..
         if role in _PROFILE_BY_ROLE and role not in ordered_unique:
             ordered_unique.append(role)
 
-    return tuple(_PROFILE_BY_ROLE[role] for role in ordered_unique)
+    profiles = [_PROFILE_BY_ROLE[role] for role in ordered_unique]
+    profiles.extend(_dynamic_specialists(brief))
+    return tuple(_dedupe_profiles(profiles))
+
+
+def _dynamic_specialists(brief: StartupBrief) -> tuple[ExecutiveProfile, ...]:
+    text = brief.normalized_text()
+    roles: list[str] = []
+    if any(keyword in text for keyword in ("restaurant", "food", "cafe", "kitchen")):
+        roles.extend(["Chef", "Food Safety Specialist", "Supply Chain Specialist"])
+    if any(keyword in text for keyword in ("retail", "shop", "store", "inventory")):
+        roles.extend(["Inventory Specialist", "Store Operations Specialist", "Pricing Analyst"])
+    if any(keyword in text for keyword in ("technology", "software", "cloud", "saas", "platform")):
+        roles.extend(["Cloud Architect"])
+    if any(keyword in text for keyword in ("ai", "automation", "model", "machine learning")):
+        roles.extend(["AI Engineer"])
+    if any(keyword in text for keyword in ("health", "medical", "clinic", "hospital", "patient")):
+        roles.extend(["Medical Advisor", "Compliance Specialist"])
+    if any(keyword in text for keyword in ("bank", "finance", "fintech", "insurance")):
+        roles.extend(["Compliance Specialist", "Pricing Analyst"])
+    return tuple(DYNAMIC_SPECIALIST_PROFILES[role] for role in dict.fromkeys(roles))
+
+
+def _dedupe_profiles(profiles: list[ExecutiveProfile]) -> list[ExecutiveProfile]:
+    seen: set[str] = set()
+    unique = []
+    for profile in profiles:
+        if profile.role in seen:
+            continue
+        unique.append(profile)
+        seen.add(profile.role)
+    return unique

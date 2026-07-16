@@ -104,7 +104,7 @@ The response includes:
 - `votes`
 - `report`
 
-The report includes evidence packet, strategic options A/B/C, decision matrix, executive summary, startup overview, executive opinions, market analysis, competitor analysis, SWOT, financial analysis, risk matrix, action plan, VC readiness score, board vote, confidence scores, confidence timeline, vote timeline, reasoning flow, meeting replay, executive scorecards, visual reasoning heatmap, final decision brief, and the original Milestone 1 operating sections.
+The report includes internal research, reasoning pipeline, evidence packet, strategic options A/B/C, decision matrix, counterfactual analysis, scenario simulator, cognitive-bias detection, executive challenge questions, dynamic expert roster, executive summary, startup overview, executive opinions, market analysis, competitor analysis, SWOT, financial analysis, risk matrix, action plan, VC readiness score, board vote, confidence scores, confidence timeline, confidence propagation, vote timeline, reasoning flow, debate tree, boardroom timeline, meeting replay, executive scorecards, executive performance tracking, visual reasoning heatmap, decision explainability, validation plan, AI reflection, decision journal, final decision brief, and the original Milestone 1 operating sections.
 
 The legacy startup idea field `success_probability` is kept for backward compatibility. Treat it as a heuristic score, not a guarantee of business success.
 
@@ -112,7 +112,7 @@ The legacy startup idea field `success_probability` is kept for backward compati
 
 Starts a live persisted board meeting. The client connects, then sends the same founder brief JSON used by `POST /api/v1/board-meetings` as the first WebSocket message.
 
-The first `meeting_started` event includes the selected `meeting_mode`, invited `executives`, risk `assessment`, and an evidence packet. Report sections then stream one artifact at a time, including replay and confidence history.
+The first `meeting_started` event includes the selected `meeting_mode`, invited `executives`, risk `assessment`, evidence packet, internal research packet, and executive challenge questions. Report sections then stream one artifact at a time, including replay, confidence propagation, debate tree, scenario simulator, reflection, and journal sections.
 
 ### Event Envelope
 

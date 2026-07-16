@@ -117,6 +117,20 @@ export type DashboardSnapshot = {
   recent_board_decisions: MeetingSummary[];
 };
 
+export type EnterpriseDashboard = {
+  organization: Record<string, unknown>;
+  departments: Array<Record<string, unknown>>;
+  teams: Array<Record<string, unknown>>;
+  users: Array<Record<string, unknown>>;
+  recent_meetings: MeetingSummary[];
+  pending_approvals: Array<Record<string, unknown>>;
+  tasks: Array<Record<string, unknown>>;
+  board_activity: Array<Record<string, unknown>>;
+  upcoming_reviews: Array<Record<string, unknown>>;
+  analytics: Record<string, unknown>;
+  executive_dashboard: Record<string, unknown>;
+};
+
 export type GlobalSearchResults = {
   query: string;
   meetings: MeetingSummary[];

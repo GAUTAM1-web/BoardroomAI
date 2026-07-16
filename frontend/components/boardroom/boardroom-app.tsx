@@ -187,9 +187,16 @@ const initialLiveState: LiveMeetingState = {
 
 const sectionTitles: Record<string, string> = {
   executive_summary: "Executive Summary",
+  internal_research: "Internal Research",
+  reasoning_pipeline: "Reasoning Pipeline",
   evidence_packet: "Evidence Packet",
   strategic_options: "Strategic Options",
   decision_matrix: "Decision Matrix",
+  counterfactual_analysis: "Counterfactual Analysis",
+  scenario_simulator: "Scenario Simulator",
+  cognitive_bias_detection: "Cognitive Bias Detection",
+  executive_challenge_questions: "Executive Challenge Questions",
+  dynamic_expert_roster: "Dynamic Expert Roster",
   startup_overview: "Startup Overview",
   executive_opinions: "Executive Opinions",
   business_plan: "Business Plan",
@@ -214,11 +221,19 @@ const sectionTitles: Record<string, string> = {
   board_vote: "Board Vote",
   confidence_scores: "Confidence",
   confidence_timeline: "Confidence Timeline",
+  confidence_propagation: "Confidence Propagation",
   vote_timeline: "Vote Timeline",
   reasoning_flow: "Reasoning Flow",
+  debate_tree: "Debate Tree",
+  boardroom_timeline: "Boardroom Timeline",
   meeting_replay: "Meeting Replay",
   executive_scorecard: "Executive Scorecard",
+  executive_performance_tracking: "Executive Performance Tracking",
   visual_reasoning_heatmap: "Visual Reasoning Heatmap",
+  decision_explainability: "Decision Explainability",
+  validation_plan: "Validation Plan",
+  ai_reflection: "AI Reflection",
+  decision_journal: "Decision Journal",
   final_decision_brief: "Final Decision Brief"
 };
 

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import re
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
-from sqlalchemy import String, cast, or_, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -18,22 +19,51 @@ from app.domain.boardroom.models import (
 )
 from app.domain.boardroom.roles import EXECUTIVE_PROFILES, select_executive_profiles
 from app.domain.boardroom.streaming import REPORT_SECTION_TITLES, BoardroomStreamEvent
+from app.domain.enterprise.security import ENTERPRISE_PERMISSIONS
 from app.infrastructure.database.models import (
+    ApprovalStepRecord,
+    ApprovalWorkflowRecord,
+    AuditEventRecord,
     BoardMeetingRecord,
     BoardVoteRecord,
     BusinessAnalysisRecord,
     BusinessEvidenceRecord,
     BusinessPerformanceEntryRecord,
     BusinessValidationTaskRecord,
+    CalendarEventRecord,
     ConfidenceEventRecord,
+    EnterpriseDepartmentRecord,
+    EnterpriseMembershipRecord,
+    EnterpriseNotificationRecord,
+    EnterpriseOrganizationRecord,
+    EnterpriseTaskRecord,
+    EnterpriseTeamRecord,
+    EnterpriseUserRecord,
     ExecutiveAgentRecord,
     FinalReportRecord,
+    KnowledgeItemRecord,
+    MeetingCollaboratorRecord,
     MeetingEventRecord,
     MeetingTurnRecord,
+    ReportCommentRecord,
     ReportSectionRecord,
+    ReportTemplateRecord,
     SavedSupplierRecord,
     StartupBriefRecord,
     VoteEventRecord,
+)
+
+DEFAULT_ORGANIZATION_SLUG = "default"
+DEFAULT_USER_EMAIL = "owner@boardroom.local"
+
+DEFAULT_REPORT_TEMPLATES = (
+    ("Restaurant", "restaurant"),
+    ("Retail", "retail"),
+    ("Manufacturing", "manufacturing"),
+    ("Healthcare", "healthcare"),
+    ("Technology", "technology"),
+    ("Franchise", "franchise"),
+    ("Export", "export"),
 )
 
 
@@ -41,12 +71,91 @@ class PostgresMeetingRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def ensure_default_workspace(self) -> dict[str, UUID]:
+        organization = await self.session.scalar(
+            select(EnterpriseOrganizationRecord).where(
+                EnterpriseOrganizationRecord.slug == DEFAULT_ORGANIZATION_SLUG
+            )
+        )
+        if organization is None:
+            organization = EnterpriseOrganizationRecord(
+                id=uuid4(),
+                name="Default Organization",
+                slug=DEFAULT_ORGANIZATION_SLUG,
+                status="active",
+                default_locale="en",
+            )
+            self.session.add(organization)
+            await self.session.flush()
+
+            departments: dict[str, EnterpriseDepartmentRecord] = {}
+            for name in ("Marketing", "Finance", "HR", "Operations", "Product"):
+                department = EnterpriseDepartmentRecord(
+                    organization_id=organization.id,
+                    name=name,
+                )
+                self.session.add(department)
+                departments[name] = department
+            await self.session.flush()
+
+            for name, department_name in (
+                ("Executive Team", "Operations"),
+                ("Finance Review", "Finance"),
+                ("Product Council", "Product"),
+                ("Marketing Strategy", "Marketing"),
+                ("People Operations", "HR"),
+            ):
+                self.session.add(
+                    EnterpriseTeamRecord(
+                        organization_id=organization.id,
+                        department_id=departments[department_name].id,
+                        name=name,
+                    )
+                )
+
+        user = await self.session.scalar(
+            select(EnterpriseUserRecord).where(EnterpriseUserRecord.email == DEFAULT_USER_EMAIL)
+        )
+        if user is None:
+            user = EnterpriseUserRecord(
+                id=uuid4(),
+                display_name="Workspace Owner",
+                email=DEFAULT_USER_EMAIL,
+                locale="en",
+                status="active",
+            )
+            self.session.add(user)
+            await self.session.flush()
+
+        membership = await self.session.scalar(
+            select(EnterpriseMembershipRecord).where(
+                EnterpriseMembershipRecord.organization_id == organization.id,
+                EnterpriseMembershipRecord.user_id == user.id,
+            )
+        )
+        if membership is None:
+            self.session.add(
+                EnterpriseMembershipRecord(
+                    organization_id=organization.id,
+                    user_id=user.id,
+                    role="Administrator",
+                    permissions=sorted(ENTERPRISE_PERMISSIONS["administrator"]),
+                )
+            )
+
+        await self._ensure_default_templates(organization.id)
+        await self._ensure_default_knowledge(organization.id)
+        await self._ensure_default_calendar(organization.id)
+        await self.session.commit()
+        return {"organization_id": organization.id, "user_id": user.id}
+
     async def start_meeting(
         self,
         meeting_id: UUID,
         brief: StartupBrief,
         assessment: StrategicAssessment,
     ) -> None:
+        workspace = await self.ensure_default_workspace()
         startup_brief = StartupBriefRecord(
             id=uuid4(),
             startup_idea=brief.startup_idea,
@@ -62,6 +171,8 @@ class PostgresMeetingRepository:
         )
         meeting = BoardMeetingRecord(
             id=meeting_id,
+            organization_id=workspace["organization_id"],
+            created_by_user_id=workspace["user_id"],
             startup_brief_id=startup_brief.id,
             status="streaming",
             consensus_reached=False,
@@ -78,6 +189,14 @@ class PostgresMeetingRepository:
         )
         self.session.add(startup_brief)
         self.session.add(meeting)
+        self._add_audit_event(
+            workspace["organization_id"],
+            workspace["user_id"],
+            "board_meeting.started",
+            "board_meeting",
+            meeting_id,
+            {"startup_idea": brief.startup_idea, "meeting_mode": brief.normalized_meeting_mode},
+        )
         for profile in select_executive_profiles(brief):
             self.session.add(
                 ExecutiveAgentRecord(
@@ -181,6 +300,7 @@ class PostgresMeetingRepository:
         )
         if existing_report is not None:
             return
+        meeting = await self.session.get(BoardMeetingRecord, meeting_id)
 
         report_record = FinalReportRecord(
             board_meeting_id=meeting_id,
@@ -202,6 +322,26 @@ class PostgresMeetingRepository:
                     position=position,
                 )
             )
+        if meeting is not None and meeting.organization_id is not None:
+            self.session.add(
+                KnowledgeItemRecord(
+                    organization_id=meeting.organization_id,
+                    title=report.title,
+                    item_type="report",
+                    source_type="board_meeting",
+                    source_id=meeting_id,
+                    content=str(report.sections.get("executive_summary", {}))[:4000],
+                    tags=["report", report.decision, "boardroom"],
+                )
+            )
+            self._add_audit_event(
+                meeting.organization_id,
+                meeting.created_by_user_id,
+                "report.generated",
+                "board_meeting",
+                meeting_id,
+                {"title": report.title, "decision": report.decision},
+            )
         await self.session.commit()
 
     async def complete_meeting(
@@ -220,6 +360,28 @@ class PostgresMeetingRepository:
             meeting.decision = decision
             meeting.current_phase = "completed"
             meeting.completed_at = datetime.now(UTC)
+            self._add_audit_event(
+                meeting.organization_id,
+                meeting.created_by_user_id,
+                "board_meeting.completed",
+                "board_meeting",
+                meeting_id,
+                {
+                    "decision": decision,
+                    "aggregate_confidence": round(aggregate_confidence, 4),
+                },
+            )
+            if meeting.organization_id is not None:
+                self.session.add(
+                    EnterpriseNotificationRecord(
+                        organization_id=meeting.organization_id,
+                        user_id=meeting.created_by_user_id,
+                        channel="in_app",
+                        title="Board meeting completed",
+                        body=f"Decision: {decision.replace('_', ' ')}",
+                        status="unread",
+                    )
+                )
 
         for vote in final_votes:
             self.session.add(
@@ -405,12 +567,15 @@ class PostgresMeetingRepository:
         request_payload: dict[str, object],
         result: dict[str, object],
     ) -> None:
+        workspace = await self.ensure_default_workspace()
         analysis_id = UUID(str(result["analysis_id"]))
         intake = result["intake"]
         recommendation = result["recommendation"]
         opportunity_score = result["opportunity_score"]
         record = BusinessAnalysisRecord(
             id=analysis_id,
+            organization_id=workspace["organization_id"],
+            created_by_user_id=workspace["user_id"],
             workflow_type=str(intake["workflow_type"]),
             business_idea=str(intake["business_idea"]),
             business_category=str(intake["business_category"]),
@@ -425,6 +590,14 @@ class PostgresMeetingRepository:
             result=result,
         )
         self.session.add(record)
+        self._add_audit_event(
+            workspace["organization_id"],
+            workspace["user_id"],
+            "business_analysis.created",
+            "business_analysis",
+            analysis_id,
+            {"business_idea": str(intake["business_idea"]), "data_mode": str(result["data_mode"])},
+        )
 
         for evidence in result.get("evidence", []):
             if not isinstance(evidence, dict):
@@ -577,6 +750,1188 @@ class PostgresMeetingRepository:
             )
         ).all()
         return [self._performance_entry_dict(record) for record in records]
+
+    async def list_organizations(self) -> list[dict[str, object]]:
+        await self.ensure_default_workspace()
+        records = (
+            await self.session.scalars(
+                select(EnterpriseOrganizationRecord).order_by(
+                    EnterpriseOrganizationRecord.created_at.desc()
+                )
+            )
+        ).all()
+        return [await self._organization_dict(record) for record in records]
+
+    async def create_organization(self, payload: dict[str, object]) -> dict[str, object]:
+        await self.ensure_default_workspace()
+        name = str(payload["name"]).strip()
+        slug = await self._unique_organization_slug(str(payload.get("slug") or name))
+        organization = EnterpriseOrganizationRecord(
+            id=uuid4(),
+            name=name,
+            slug=slug,
+            status="active",
+            default_locale=str(payload.get("default_locale") or "en"),
+        )
+        self.session.add(organization)
+        await self.session.flush()
+
+        departments: dict[str, EnterpriseDepartmentRecord] = {}
+        for department_name in ("Marketing", "Finance", "HR", "Operations", "Product"):
+            department = EnterpriseDepartmentRecord(
+                organization_id=organization.id,
+                name=department_name,
+            )
+            self.session.add(department)
+            departments[department_name] = department
+        await self.session.flush()
+
+        for team_name, department_name in (
+            ("Executive Team", "Operations"),
+            ("Finance Review", "Finance"),
+            ("Product Council", "Product"),
+            ("Marketing Strategy", "Marketing"),
+            ("People Operations", "HR"),
+        ):
+            self.session.add(
+                EnterpriseTeamRecord(
+                    organization_id=organization.id,
+                    department_id=departments[department_name].id,
+                    name=team_name,
+                )
+            )
+
+        await self._ensure_default_templates(organization.id)
+        await self._ensure_default_knowledge(organization.id)
+        await self._ensure_default_calendar(organization.id)
+        self._add_audit_event(
+            organization.id,
+            None,
+            "organization.created",
+            "organization",
+            organization.id,
+            {"name": organization.name, "slug": organization.slug},
+        )
+        await self.session.commit()
+        return await self._organization_dict(organization)
+
+    async def enterprise_dashboard(self) -> dict[str, object]:
+        organization, user = await self._default_workspace_records()
+        analytics = await self.enterprise_analytics()
+        departments = (
+            await self.session.scalars(
+                select(EnterpriseDepartmentRecord)
+                .where(EnterpriseDepartmentRecord.organization_id == organization.id)
+                .order_by(EnterpriseDepartmentRecord.name.asc())
+            )
+        ).all()
+        teams = (
+            await self.session.scalars(
+                select(EnterpriseTeamRecord)
+                .where(EnterpriseTeamRecord.organization_id == organization.id)
+                .order_by(EnterpriseTeamRecord.name.asc())
+            )
+        ).all()
+        users = await self._workspace_users(organization.id)
+        pending_approvals = await self._approval_workflows(status="pending", limit=8)
+        tasks = await self.list_tasks(status=None, limit=8)
+        board_activity = await self.audit_log(limit=12)
+        upcoming_reviews = await self.list_calendar_events(limit=8)
+        return {
+            "organization": await self._organization_dict(organization),
+            "departments": [self._department_dict(record) for record in departments],
+            "teams": [self._team_dict(record) for record in teams],
+            "users": users,
+            "recent_meetings": await self.list_meetings(limit=8),
+            "pending_approvals": pending_approvals,
+            "tasks": tasks,
+            "board_activity": board_activity,
+            "upcoming_reviews": upcoming_reviews,
+            "analytics": analytics["analytics"],
+            "executive_dashboard": analytics["executive_dashboard"],
+            "current_user": self._user_dict(user),
+        }
+
+    async def enterprise_analytics(self) -> dict[str, object]:
+        workspace = await self.ensure_default_workspace()
+        organization_id = workspace["organization_id"]
+        meeting_records = (
+            await self.session.scalars(
+                select(BoardMeetingRecord)
+                .where(BoardMeetingRecord.organization_id == organization_id)
+                .order_by(BoardMeetingRecord.created_at.desc())
+                .limit(100)
+            )
+        ).all()
+        if not meeting_records:
+            meeting_records = (
+                await self.session.scalars(
+                    select(BoardMeetingRecord)
+                    .order_by(BoardMeetingRecord.created_at.desc())
+                    .limit(100)
+                )
+            ).all()
+
+        completed = [record for record in meeting_records if record.status == "completed"]
+        decision_counts: dict[str, int] = {}
+        for record in completed:
+            decision_counts[record.decision] = decision_counts.get(record.decision, 0) + 1
+        approved = sum(
+            count
+            for decision, count in decision_counts.items()
+            if decision in {"approve", "approve_with_conditions"}
+        )
+
+        approval_records = (
+            await self.session.scalars(
+                select(ApprovalWorkflowRecord)
+                .where(ApprovalWorkflowRecord.organization_id == organization_id)
+                .order_by(ApprovalWorkflowRecord.created_at.desc())
+                .limit(100)
+            )
+        ).all()
+        completed_approvals = [
+            approval
+            for approval in approval_records
+            if approval.completed_at is not None and approval.created_at is not None
+        ]
+        approval_hours = [
+            (approval.completed_at - approval.created_at).total_seconds() / 3600
+            for approval in completed_approvals
+        ]
+        role_rows = (
+            await self.session.execute(
+                select(MeetingTurnRecord.speaker_role, func.count())
+                .join(
+                    BoardMeetingRecord,
+                    MeetingTurnRecord.board_meeting_id == BoardMeetingRecord.id,
+                )
+                .where(BoardMeetingRecord.organization_id == organization_id)
+                .group_by(MeetingTurnRecord.speaker_role)
+                .order_by(func.count().desc())
+                .limit(6)
+            )
+        ).all()
+        evidence_rows = (
+            await self.session.execute(
+                select(BusinessAnalysisRecord.evidence_confidence, func.count())
+                .where(BusinessAnalysisRecord.organization_id == organization_id)
+                .group_by(BusinessAnalysisRecord.evidence_confidence)
+            )
+        ).all()
+        evidence_quality = [
+            {"confidence": confidence, "count": count} for confidence, count in evidence_rows
+        ]
+        trends = [
+            {
+                "meeting_id": str(record.id),
+                "date": _iso(record.completed_at or record.created_at),
+                "decision": record.decision,
+                "confidence": float(record.aggregate_confidence),
+                "risk": (record.assessment or {}).get("overall_risk"),
+            }
+            for record in completed[:12]
+        ]
+        analytics = {
+            "meetings": {
+                "total": len(meeting_records),
+                "completed": len(completed),
+                "active": len(
+                    [record for record in meeting_records if record.status != "completed"]
+                ),
+            },
+            "decisions": decision_counts,
+            "approval_time_hours": (
+                round(sum(approval_hours) / len(approval_hours), 2) if approval_hours else 0
+            ),
+            "most_active_executives": [
+                {"role": role, "turns": count} for role, count in role_rows
+            ],
+            "success_rate": round(approved / len(completed), 3) if completed else 0.0,
+            "evidence_quality": evidence_quality,
+        }
+        executive_dashboard = {
+            "decision_quality_trends": trends,
+            "confidence_trends": [
+                {"date": item["date"], "confidence": item["confidence"]} for item in trends
+            ],
+            "risk_trends": [
+                {"date": item["date"], "risk": item["risk"]}
+                for item in trends
+                if item["risk"] is not None
+            ],
+            "replay_frequency": await self._count(
+                BoardMeetingRecord,
+                BoardMeetingRecord.organization_id == organization_id,
+                BoardMeetingRecord.is_favorite.is_(True),
+            ),
+            "recommendation_outcomes": decision_counts,
+            "acceptance_rate": analytics["success_rate"],
+        }
+        return {"analytics": analytics, "executive_dashboard": executive_dashboard}
+
+    async def admin_panel(self) -> dict[str, object]:
+        workspace = await self.ensure_default_workspace()
+        organization_id = workspace["organization_id"]
+        organizations = await self.list_organizations()
+        users = await self._workspace_users(organization_id)
+        usage_statistics = {
+            "organizations": len(organizations),
+            "users": len(users),
+            "meetings": await self._count(BoardMeetingRecord),
+            "business_analyses": await self._count(BusinessAnalysisRecord),
+            "tasks": await self._count(EnterpriseTaskRecord),
+            "audit_events": await self._count(AuditEventRecord),
+        }
+        return {
+            "users": users,
+            "organizations": organizations,
+            "api_keys": [
+                {
+                    "name": "Server managed provider keys",
+                    "status": "configured_by_environment",
+                    "secret": "redacted",
+                }
+            ],
+            "providers": {},
+            "feature_flags": {
+                "enterprise_workspace": True,
+                "collaboration": True,
+                "email_notifications_ready": True,
+                "localization_ready": True,
+            },
+            "diagnostics": {
+                "default_workspace": str(organization_id),
+                "desktop_compatibility": "preserved",
+                "api_compatibility": "additive",
+            },
+            "usage_statistics": usage_statistics,
+        }
+
+    async def list_report_templates(self) -> list[dict[str, object]]:
+        workspace = await self.ensure_default_workspace()
+        records = (
+            await self.session.scalars(
+                select(ReportTemplateRecord)
+                .where(
+                    or_(
+                        ReportTemplateRecord.organization_id == workspace["organization_id"],
+                        ReportTemplateRecord.organization_id.is_(None),
+                    )
+                )
+                .order_by(ReportTemplateRecord.category.asc())
+            )
+        ).all()
+        return [self._report_template_dict(record) for record in records]
+
+    async def search_knowledge(self, query: str, limit: int = 20) -> list[dict[str, object]]:
+        workspace = await self.ensure_default_workspace()
+        normalized = query.strip().lower()
+        pattern = f"%{query.strip()}%"
+        records = (
+            await self.session.scalars(
+                select(KnowledgeItemRecord)
+                .where(
+                    KnowledgeItemRecord.organization_id == workspace["organization_id"],
+                    or_(
+                        KnowledgeItemRecord.title.ilike(pattern),
+                        KnowledgeItemRecord.content.ilike(pattern),
+                        cast(KnowledgeItemRecord.tags, String).ilike(pattern),
+                    ),
+                )
+                .order_by(KnowledgeItemRecord.created_at.desc())
+                .limit(limit)
+            )
+        ).all()
+        items = [self._knowledge_item_dict(record) for record in records]
+        if "rejected" in normalized:
+            rejected_meetings = (
+                await self.session.scalars(
+                    select(BoardMeetingRecord)
+                    .where(BoardMeetingRecord.decision.ilike("%reject%"))
+                    .order_by(BoardMeetingRecord.created_at.desc())
+                    .limit(limit)
+                )
+            ).all()
+            items.extend(
+                {
+                    "id": str(record.id),
+                    "title": f"Rejected board recommendation: {record.decision}",
+                    "item_type": "decision",
+                    "source_type": "board_meeting",
+                    "source_id": str(record.id),
+                    "content": str(record.assessment or {}),
+                    "tags": ["rejected", "decision"],
+                    "created_at": _iso(record.created_at),
+                }
+                for record in rejected_meetings
+            )
+
+        budget_limit = self._extract_lakh_budget(normalized)
+        if budget_limit is not None:
+            analysis_stmt = (
+                select(BusinessAnalysisRecord)
+                .where(BusinessAnalysisRecord.budget <= budget_limit)
+                .order_by(BusinessAnalysisRecord.created_at.desc())
+                .limit(limit)
+            )
+            if "restaurant" in normalized:
+                analysis_stmt = analysis_stmt.where(
+                    or_(
+                        BusinessAnalysisRecord.business_category.ilike("%restaurant%"),
+                        BusinessAnalysisRecord.business_idea.ilike("%restaurant%"),
+                    )
+                )
+            analyses = (await self.session.scalars(analysis_stmt)).all()
+            items.extend(
+                {
+                    "id": str(record.id),
+                    "title": record.business_idea,
+                    "item_type": "business_analysis",
+                    "source_type": "business_analysis",
+                    "source_id": str(record.id),
+                    "content": record.recommendation_label,
+                    "tags": [record.business_category, "budget_filtered"],
+                    "created_at": _iso(record.created_at),
+                }
+                for record in analyses
+            )
+        return items[:limit]
+
+    async def audit_log(self, limit: int = 30) -> list[dict[str, object]]:
+        workspace = await self.ensure_default_workspace()
+        records = (
+            await self.session.scalars(
+                select(AuditEventRecord)
+                .where(AuditEventRecord.organization_id == workspace["organization_id"])
+                .order_by(AuditEventRecord.created_at.desc())
+                .limit(limit)
+            )
+        ).all()
+        return [self._audit_event_dict(record) for record in records]
+
+    async def list_report_comments(self, meeting_id: UUID) -> list[dict[str, object]] | None:
+        meeting = await self.session.get(BoardMeetingRecord, meeting_id)
+        if meeting is None:
+            return None
+        records = (
+            await self.session.scalars(
+                select(ReportCommentRecord)
+                .where(ReportCommentRecord.board_meeting_id == meeting_id)
+                .order_by(ReportCommentRecord.created_at.asc())
+            )
+        ).all()
+        return [await self._comment_dict(record) for record in records]
+
+    async def create_report_comment(
+        self,
+        meeting_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object] | None:
+        meeting = await self._meeting_with_workspace(meeting_id)
+        if meeting is None:
+            return None
+        workspace = await self.ensure_default_workspace()
+        author_id = meeting.created_by_user_id or workspace["user_id"]
+        comment = ReportCommentRecord(
+            id=uuid4(),
+            organization_id=meeting.organization_id or workspace["organization_id"],
+            board_meeting_id=meeting_id,
+            parent_comment_id=(
+                UUID(str(payload["parent_comment_id"]))
+                if payload.get("parent_comment_id") is not None
+                else None
+            ),
+            author_user_id=author_id,
+            section_key=(
+                str(payload["section_key"]) if payload.get("section_key") is not None else None
+            ),
+            body=str(payload["body"]),
+            mentions=list(payload.get("mentions") or []),
+            status="open",
+        )
+        self.session.add(comment)
+        self._add_audit_event(
+            comment.organization_id,
+            author_id,
+            "report.comment.created",
+            "board_meeting",
+            meeting_id,
+            {"section_key": comment.section_key, "mentions": comment.mentions},
+        )
+        for mention in comment.mentions:
+            mentioned_user = await self._ensure_user(str(mention), str(mention).split("@")[0])
+            self.session.add(
+                EnterpriseNotificationRecord(
+                    organization_id=comment.organization_id,
+                    user_id=mentioned_user.id,
+                    channel="in_app",
+                    title="You were mentioned in a report",
+                    body=comment.body[:240],
+                    status="unread",
+                )
+            )
+        await self.session.commit()
+        await self.session.refresh(comment)
+        return await self._comment_dict(comment)
+
+    async def resolve_report_comment(
+        self,
+        meeting_id: UUID,
+        comment_id: UUID,
+        status: str,
+    ) -> dict[str, object] | None:
+        comment = await self.session.get(ReportCommentRecord, comment_id)
+        if comment is None or comment.board_meeting_id != meeting_id:
+            return None
+        workspace = await self.ensure_default_workspace()
+        comment.status = status
+        comment.resolved_at = datetime.now(UTC) if status == "resolved" else None
+        self._add_audit_event(
+            comment.organization_id,
+            workspace["user_id"],
+            "report.comment.updated",
+            "comment",
+            comment_id,
+            {"status": status},
+        )
+        await self.session.commit()
+        return await self._comment_dict(comment)
+
+    async def join_meeting(
+        self,
+        meeting_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object] | None:
+        meeting = await self._meeting_with_workspace(meeting_id)
+        if meeting is None:
+            return None
+        user = await self._ensure_user(
+            str(payload.get("user_email") or DEFAULT_USER_EMAIL),
+            str(payload.get("display_name") or "Workspace Member"),
+        )
+        collaborator = await self.session.scalar(
+            select(MeetingCollaboratorRecord).where(
+                MeetingCollaboratorRecord.board_meeting_id == meeting_id,
+                MeetingCollaboratorRecord.user_id == user.id,
+            )
+        )
+        if collaborator is None:
+            collaborator = MeetingCollaboratorRecord(
+                id=uuid4(),
+                board_meeting_id=meeting_id,
+                user_id=user.id,
+                role=str(payload.get("role") or "Manager"),
+                status="joined",
+            )
+            self.session.add(collaborator)
+        else:
+            collaborator.role = str(payload.get("role") or collaborator.role)
+            collaborator.status = "joined"
+        self._add_audit_event(
+            meeting.organization_id,
+            user.id,
+            "board_meeting.collaborator_joined",
+            "board_meeting",
+            meeting_id,
+            {"role": collaborator.role},
+        )
+        await self.session.commit()
+        return {
+            "meeting_id": str(meeting_id),
+            "collaborator": self._collaborator_dict(collaborator, user),
+        }
+
+    async def create_approval_workflow(
+        self,
+        meeting_id: UUID | None,
+        payload: dict[str, object],
+    ) -> dict[str, object] | None:
+        workspace = await self.ensure_default_workspace()
+        organization_id = workspace["organization_id"]
+        if meeting_id is not None:
+            meeting = await self._meeting_with_workspace(meeting_id)
+            if meeting is None:
+                return None
+            organization_id = meeting.organization_id or organization_id
+        business_analysis_id = (
+            UUID(str(payload["business_analysis_id"]))
+            if payload.get("business_analysis_id") is not None
+            else None
+        )
+        if business_analysis_id is not None:
+            analysis = await self.session.get(BusinessAnalysisRecord, business_analysis_id)
+            if analysis is None:
+                return None
+            organization_id = analysis.organization_id or organization_id
+        workflow = ApprovalWorkflowRecord(
+            id=uuid4(),
+            organization_id=organization_id,
+            board_meeting_id=meeting_id,
+            business_analysis_id=business_analysis_id,
+            status="pending",
+            requested_by_user_id=workspace["user_id"],
+            reason=str(payload["reason"]) if payload.get("reason") is not None else None,
+        )
+        self.session.add(workflow)
+        await self.session.flush()
+        steps = list(payload.get("steps") or ["Manager", "CEO"])
+        for position, role in enumerate(steps, start=1):
+            self.session.add(
+                ApprovalStepRecord(
+                    id=uuid4(),
+                    workflow_id=workflow.id,
+                    role=str(role),
+                    position=position,
+                    status="pending",
+                )
+            )
+        self._add_audit_event(
+            organization_id,
+            workspace["user_id"],
+            "approval.workflow.created",
+            "approval_workflow",
+            workflow.id,
+            {"steps": steps, "board_meeting_id": str(meeting_id) if meeting_id else None},
+        )
+        await self.session.commit()
+        return await self._approval_dict(workflow.id)
+
+    async def decide_approval_step(
+        self,
+        workflow_id: UUID,
+        step_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object] | None:
+        workspace = await self.ensure_default_workspace()
+        workflow = await self.session.get(ApprovalWorkflowRecord, workflow_id)
+        step = await self.session.get(ApprovalStepRecord, step_id)
+        if workflow is None or step is None or step.workflow_id != workflow_id:
+            return None
+        step.status = str(payload["status"])
+        step.reason = str(payload["reason"]) if payload.get("reason") is not None else None
+        step.approver_user_id = workspace["user_id"]
+        step.decided_at = datetime.now(UTC)
+        steps = (
+            await self.session.scalars(
+                select(ApprovalStepRecord)
+                .where(ApprovalStepRecord.workflow_id == workflow_id)
+                .order_by(ApprovalStepRecord.position.asc())
+            )
+        ).all()
+        if step.status == "rejected":
+            workflow.status = "rejected"
+            workflow.completed_at = datetime.now(UTC)
+        elif all(item.status == "approved" for item in steps):
+            workflow.status = "approved"
+            workflow.completed_at = datetime.now(UTC)
+        else:
+            workflow.status = "pending"
+        self.session.add(
+            EnterpriseNotificationRecord(
+                organization_id=workflow.organization_id,
+                user_id=workflow.requested_by_user_id,
+                channel="in_app",
+                title="Approval workflow updated",
+                body=f"{step.role} marked the step {step.status}.",
+                status="unread",
+            )
+        )
+        self._add_audit_event(
+            workflow.organization_id,
+            workspace["user_id"],
+            f"approval.step.{step.status}",
+            "approval_step",
+            step_id,
+            {"workflow_id": str(workflow_id), "reason": step.reason},
+        )
+        await self.session.commit()
+        return await self._approval_dict(workflow_id)
+
+    async def list_tasks(
+        self,
+        status: str | None = None,
+        limit: int = 30,
+    ) -> list[dict[str, object]]:
+        workspace = await self.ensure_default_workspace()
+        stmt = (
+            select(EnterpriseTaskRecord)
+            .where(EnterpriseTaskRecord.organization_id == workspace["organization_id"])
+            .order_by(EnterpriseTaskRecord.created_at.desc())
+            .limit(limit)
+        )
+        if status:
+            stmt = stmt.where(EnterpriseTaskRecord.status == status)
+        records = (await self.session.scalars(stmt)).all()
+        return [await self._task_dict(record) for record in records]
+
+    async def create_task(self, payload: dict[str, object]) -> dict[str, object]:
+        workspace = await self.ensure_default_workspace()
+        assignee_id: UUID | None = None
+        if payload.get("assignee_email") is not None:
+            assignee = await self._ensure_user(
+                str(payload["assignee_email"]),
+                str(payload["assignee_email"]).split("@")[0],
+            )
+            assignee_id = assignee.id
+        due_at = (
+            _parse_datetime(str(payload["due_at"])) if payload.get("due_at") is not None else None
+        )
+        task = EnterpriseTaskRecord(
+            id=uuid4(),
+            organization_id=workspace["organization_id"],
+            board_meeting_id=(
+                UUID(str(payload["board_meeting_id"]))
+                if payload.get("board_meeting_id") is not None
+                else None
+            ),
+            business_analysis_id=(
+                UUID(str(payload["business_analysis_id"]))
+                if payload.get("business_analysis_id") is not None
+                else None
+            ),
+            assignee_user_id=assignee_id,
+            title=str(payload["title"]),
+            description=(
+                str(payload["description"]) if payload.get("description") is not None else None
+            ),
+            source=str(payload.get("source") or "manual"),
+            status="open",
+            due_at=due_at,
+        )
+        self.session.add(task)
+        if due_at is not None:
+            self.session.add(
+                CalendarEventRecord(
+                    organization_id=workspace["organization_id"],
+                    title=task.title,
+                    event_type="task_deadline",
+                    starts_at=due_at,
+                    related_entity_type="task",
+                    related_entity_id=task.id,
+                )
+            )
+        self._add_audit_event(
+            workspace["organization_id"],
+            workspace["user_id"],
+            "task.created",
+            "task",
+            task.id,
+            {"title": task.title, "source": task.source},
+        )
+        await self.session.commit()
+        return await self._task_dict(task)
+
+    async def update_task(
+        self,
+        task_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object] | None:
+        workspace = await self.ensure_default_workspace()
+        task = await self.session.get(EnterpriseTaskRecord, task_id)
+        if task is None:
+            return None
+        if payload.get("status") is not None:
+            task.status = str(payload["status"])
+        if payload.get("title") is not None:
+            task.title = str(payload["title"])
+        if payload.get("description") is not None:
+            task.description = str(payload["description"])
+        if payload.get("due_at") is not None:
+            task.due_at = _parse_datetime(str(payload["due_at"]))
+        self._add_audit_event(
+            task.organization_id,
+            workspace["user_id"],
+            "task.updated",
+            "task",
+            task.id,
+            {"status": task.status, "title": task.title},
+        )
+        await self.session.commit()
+        return await self._task_dict(task)
+
+    async def list_calendar_events(self, limit: int = 30) -> list[dict[str, object]]:
+        workspace = await self.ensure_default_workspace()
+        records = (
+            await self.session.scalars(
+                select(CalendarEventRecord)
+                .where(CalendarEventRecord.organization_id == workspace["organization_id"])
+                .order_by(CalendarEventRecord.starts_at.asc())
+                .limit(limit)
+            )
+        ).all()
+        return [self._calendar_event_dict(record) for record in records]
+
+    async def list_notifications(self, limit: int = 30) -> list[dict[str, object]]:
+        workspace = await self.ensure_default_workspace()
+        records = (
+            await self.session.scalars(
+                select(EnterpriseNotificationRecord)
+                .where(EnterpriseNotificationRecord.organization_id == workspace["organization_id"])
+                .order_by(EnterpriseNotificationRecord.created_at.desc())
+                .limit(limit)
+            )
+        ).all()
+        return [self._notification_dict(record) for record in records]
+
+    async def _ensure_default_templates(self, organization_id: UUID) -> None:
+        existing = set(
+            (
+                await self.session.scalars(
+                    select(ReportTemplateRecord.category).where(
+                        ReportTemplateRecord.organization_id == organization_id
+                    )
+                )
+            ).all()
+        )
+        default_sections = [
+            "executive_summary",
+            "market_assessment",
+            "financial_review",
+            "risk_register",
+            "decision_history",
+            "approval_plan",
+        ]
+        for name, category in DEFAULT_REPORT_TEMPLATES:
+            if category in existing:
+                continue
+            self.session.add(
+                ReportTemplateRecord(
+                    organization_id=organization_id,
+                    name=f"{name} Decision Report",
+                    category=category,
+                    locale="en",
+                    sections=default_sections,
+                )
+            )
+
+    async def _ensure_default_knowledge(self, organization_id: UUID) -> None:
+        existing = await self.session.scalar(
+            select(KnowledgeItemRecord).where(
+                KnowledgeItemRecord.organization_id == organization_id,
+                KnowledgeItemRecord.source_type == "seed",
+            )
+        )
+        if existing is not None:
+            return
+        for title, content, tags in (
+            (
+                "Approval Playbook",
+                "Analysts prepare evidence, managers approve readiness, and CEOs sign off.",
+                ["approval", "governance", "workflow"],
+            ),
+            (
+                "Evidence Quality Standard",
+                (
+                    "Recommendations should include source freshness, confidence, risk, "
+                    "and next steps."
+                ),
+                ["evidence", "quality", "best_practice"],
+            ),
+            (
+                "Board Review Cadence",
+                "Review active decisions monthly and archive outcomes with confidence movement.",
+                ["calendar", "review", "decision_history"],
+            ),
+        ):
+            self.session.add(
+                KnowledgeItemRecord(
+                    organization_id=organization_id,
+                    title=title,
+                    item_type="best_practice",
+                    source_type="seed",
+                    content=content,
+                    tags=tags,
+                )
+            )
+
+    async def _ensure_default_calendar(self, organization_id: UUID) -> None:
+        existing = await self.session.scalar(
+            select(CalendarEventRecord).where(
+                CalendarEventRecord.organization_id == organization_id,
+                CalendarEventRecord.event_type == "board_review",
+            )
+        )
+        if existing is not None:
+            return
+        starts_at = datetime.now(UTC) + timedelta(days=7)
+        self.session.add(
+            CalendarEventRecord(
+                organization_id=organization_id,
+                title="Monthly board review",
+                event_type="board_review",
+                starts_at=starts_at,
+                ends_at=starts_at + timedelta(hours=1),
+            )
+        )
+
+    async def _default_workspace_records(
+        self,
+    ) -> tuple[EnterpriseOrganizationRecord, EnterpriseUserRecord]:
+        workspace = await self.ensure_default_workspace()
+        organization = await self.session.get(
+            EnterpriseOrganizationRecord,
+            workspace["organization_id"],
+        )
+        user = await self.session.get(EnterpriseUserRecord, workspace["user_id"])
+        if organization is None or user is None:
+            raise RuntimeError("Default enterprise workspace could not be loaded.")
+        return organization, user
+
+    async def _meeting_with_workspace(self, meeting_id: UUID) -> BoardMeetingRecord | None:
+        workspace = await self.ensure_default_workspace()
+        meeting = await self.session.get(BoardMeetingRecord, meeting_id)
+        if meeting is None:
+            return None
+        changed = False
+        if meeting.organization_id is None:
+            meeting.organization_id = workspace["organization_id"]
+            changed = True
+        if meeting.created_by_user_id is None:
+            meeting.created_by_user_id = workspace["user_id"]
+            changed = True
+        if changed:
+            self._add_audit_event(
+                meeting.organization_id,
+                meeting.created_by_user_id,
+                "board_meeting.workspace_attached",
+                "board_meeting",
+                meeting.id,
+                {},
+            )
+            await self.session.flush()
+        return meeting
+
+    async def _ensure_user(self, email: str, display_name: str) -> EnterpriseUserRecord:
+        normalized_email = email.strip().lower()
+        user = await self.session.scalar(
+            select(EnterpriseUserRecord).where(EnterpriseUserRecord.email == normalized_email)
+        )
+        if user is not None:
+            return user
+        user = EnterpriseUserRecord(
+            id=uuid4(),
+            display_name=display_name.strip() or normalized_email,
+            email=normalized_email,
+            locale="en",
+            status="active",
+        )
+        self.session.add(user)
+        await self.session.flush()
+        return user
+
+    async def _workspace_users(self, organization_id: UUID) -> list[dict[str, object]]:
+        rows = (
+            await self.session.execute(
+                select(EnterpriseUserRecord, EnterpriseMembershipRecord)
+                .join(
+                    EnterpriseMembershipRecord,
+                    EnterpriseMembershipRecord.user_id == EnterpriseUserRecord.id,
+                )
+                .where(EnterpriseMembershipRecord.organization_id == organization_id)
+                .order_by(EnterpriseUserRecord.display_name.asc())
+            )
+        ).all()
+        return [
+            {
+                **self._user_dict(user),
+                "role": membership.role,
+                "permissions": membership.permissions,
+                "team_id": str(membership.team_id) if membership.team_id else None,
+            }
+            for user, membership in rows
+        ]
+
+    async def _approval_workflows(
+        self,
+        status: str | None = None,
+        limit: int = 30,
+    ) -> list[dict[str, object]]:
+        workspace = await self.ensure_default_workspace()
+        stmt = (
+            select(ApprovalWorkflowRecord)
+            .where(ApprovalWorkflowRecord.organization_id == workspace["organization_id"])
+            .order_by(ApprovalWorkflowRecord.created_at.desc())
+            .limit(limit)
+        )
+        if status:
+            stmt = stmt.where(ApprovalWorkflowRecord.status == status)
+        workflows = (await self.session.scalars(stmt)).all()
+        return [
+            approval
+            for approval in [await self._approval_dict(workflow.id) for workflow in workflows]
+            if approval is not None
+        ]
+
+    async def _approval_dict(self, workflow_id: UUID) -> dict[str, object] | None:
+        workflow = await self.session.get(ApprovalWorkflowRecord, workflow_id)
+        if workflow is None:
+            return None
+        steps = (
+            await self.session.scalars(
+                select(ApprovalStepRecord)
+                .where(ApprovalStepRecord.workflow_id == workflow_id)
+                .order_by(ApprovalStepRecord.position.asc())
+            )
+        ).all()
+        return {
+            "id": str(workflow.id),
+            "organization_id": str(workflow.organization_id),
+            "board_meeting_id": (
+                str(workflow.board_meeting_id) if workflow.board_meeting_id else None
+            ),
+            "business_analysis_id": (
+                str(workflow.business_analysis_id) if workflow.business_analysis_id else None
+            ),
+            "status": workflow.status,
+            "requested_by_user_id": str(workflow.requested_by_user_id),
+            "reason": workflow.reason,
+            "created_at": _iso(workflow.created_at),
+            "completed_at": _iso(workflow.completed_at),
+            "steps": [
+                {
+                    "id": str(step.id),
+                    "role": step.role,
+                    "position": step.position,
+                    "status": step.status,
+                    "approver_user_id": (
+                        str(step.approver_user_id) if step.approver_user_id else None
+                    ),
+                    "reason": step.reason,
+                    "decided_at": _iso(step.decided_at),
+                }
+                for step in steps
+            ],
+        }
+
+    async def _organization_dict(
+        self,
+        record: EnterpriseOrganizationRecord,
+    ) -> dict[str, object]:
+        return {
+            "id": str(record.id),
+            "name": record.name,
+            "slug": record.slug,
+            "status": record.status,
+            "default_locale": record.default_locale,
+            "created_at": _iso(record.created_at),
+            "departments_count": await self._count(
+                EnterpriseDepartmentRecord,
+                EnterpriseDepartmentRecord.organization_id == record.id,
+            ),
+            "teams_count": await self._count(
+                EnterpriseTeamRecord,
+                EnterpriseTeamRecord.organization_id == record.id,
+            ),
+            "users_count": await self._count(
+                EnterpriseMembershipRecord,
+                EnterpriseMembershipRecord.organization_id == record.id,
+            ),
+        }
+
+    def _department_dict(self, record: EnterpriseDepartmentRecord) -> dict[str, object]:
+        return {
+            "id": str(record.id),
+            "organization_id": str(record.organization_id),
+            "name": record.name,
+            "created_at": _iso(record.created_at),
+        }
+
+    def _team_dict(self, record: EnterpriseTeamRecord) -> dict[str, object]:
+        return {
+            "id": str(record.id),
+            "organization_id": str(record.organization_id),
+            "department_id": str(record.department_id) if record.department_id else None,
+            "name": record.name,
+            "created_at": _iso(record.created_at),
+        }
+
+    def _user_dict(self, record: EnterpriseUserRecord) -> dict[str, object]:
+        return {
+            "id": str(record.id),
+            "display_name": record.display_name,
+            "email": record.email,
+            "locale": record.locale,
+            "status": record.status,
+            "created_at": _iso(record.created_at),
+        }
+
+    async def _comment_dict(self, record: ReportCommentRecord) -> dict[str, object]:
+        author = await self.session.get(EnterpriseUserRecord, record.author_user_id)
+        return {
+            "id": str(record.id),
+            "organization_id": str(record.organization_id),
+            "board_meeting_id": str(record.board_meeting_id),
+            "parent_comment_id": (
+                str(record.parent_comment_id) if record.parent_comment_id else None
+            ),
+            "author_user_id": str(record.author_user_id),
+            "author": self._user_dict(author) if author is not None else None,
+            "section_key": record.section_key,
+            "body": record.body,
+            "mentions": record.mentions,
+            "status": record.status,
+            "resolved_at": _iso(record.resolved_at),
+            "created_at": _iso(record.created_at),
+        }
+
+    def _collaborator_dict(
+        self,
+        record: MeetingCollaboratorRecord,
+        user: EnterpriseUserRecord,
+    ) -> dict[str, object]:
+        return {
+            "id": str(record.id),
+            "board_meeting_id": str(record.board_meeting_id),
+            "user": self._user_dict(user),
+            "role": record.role,
+            "status": record.status,
+            "joined_at": _iso(record.joined_at),
+        }
+
+    async def _task_dict(self, record: EnterpriseTaskRecord) -> dict[str, object]:
+        assignee = (
+            await self.session.get(EnterpriseUserRecord, record.assignee_user_id)
+            if record.assignee_user_id is not None
+            else None
+        )
+        return {
+            "id": str(record.id),
+            "organization_id": str(record.organization_id),
+            "board_meeting_id": str(record.board_meeting_id) if record.board_meeting_id else None,
+            "business_analysis_id": (
+                str(record.business_analysis_id) if record.business_analysis_id else None
+            ),
+            "assignee": self._user_dict(assignee) if assignee is not None else None,
+            "title": record.title,
+            "description": record.description,
+            "source": record.source,
+            "status": record.status,
+            "due_at": _iso(record.due_at),
+            "created_at": _iso(record.created_at),
+        }
+
+    def _calendar_event_dict(self, record: CalendarEventRecord) -> dict[str, object]:
+        return {
+            "id": str(record.id),
+            "organization_id": str(record.organization_id),
+            "title": record.title,
+            "event_type": record.event_type,
+            "starts_at": _iso(record.starts_at),
+            "ends_at": _iso(record.ends_at),
+            "related_entity_type": record.related_entity_type,
+            "related_entity_id": (
+                str(record.related_entity_id) if record.related_entity_id else None
+            ),
+            "created_at": _iso(record.created_at),
+        }
+
+    def _notification_dict(self, record: EnterpriseNotificationRecord) -> dict[str, object]:
+        return {
+            "id": str(record.id),
+            "organization_id": str(record.organization_id),
+            "user_id": str(record.user_id) if record.user_id else None,
+            "channel": record.channel,
+            "title": record.title,
+            "body": record.body,
+            "status": record.status,
+            "created_at": _iso(record.created_at),
+        }
+
+    def _knowledge_item_dict(self, record: KnowledgeItemRecord) -> dict[str, object]:
+        return {
+            "id": str(record.id),
+            "organization_id": str(record.organization_id),
+            "title": record.title,
+            "item_type": record.item_type,
+            "source_type": record.source_type,
+            "source_id": str(record.source_id) if record.source_id else None,
+            "content": record.content,
+            "tags": record.tags,
+            "created_at": _iso(record.created_at),
+        }
+
+    def _report_template_dict(self, record: ReportTemplateRecord) -> dict[str, object]:
+        return {
+            "id": str(record.id),
+            "organization_id": str(record.organization_id) if record.organization_id else None,
+            "name": record.name,
+            "category": record.category,
+            "locale": record.locale,
+            "sections": record.sections,
+            "created_at": _iso(record.created_at),
+        }
+
+    def _audit_event_dict(self, record: AuditEventRecord) -> dict[str, object]:
+        return {
+            "id": str(record.id),
+            "organization_id": str(record.organization_id) if record.organization_id else None,
+            "actor_user_id": str(record.actor_user_id) if record.actor_user_id else None,
+            "action": record.action,
+            "entity_type": record.entity_type,
+            "entity_id": str(record.entity_id) if record.entity_id else None,
+            "details": record.details,
+            "created_at": _iso(record.created_at),
+        }
+
+    async def _unique_organization_slug(self, value: str) -> str:
+        base = re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-") or "workspace"
+        slug = base[:110]
+        suffix = 2
+        while await self.session.scalar(
+            select(EnterpriseOrganizationRecord).where(
+                EnterpriseOrganizationRecord.slug == slug
+            )
+        ):
+            ending = f"-{suffix}"
+            slug = f"{base[: 120 - len(ending)]}{ending}"
+            suffix += 1
+        return slug
+
+    async def _count(self, model: object, *conditions: object) -> int:
+        stmt = select(func.count()).select_from(model)
+        for condition in conditions:
+            stmt = stmt.where(condition)
+        return int(await self.session.scalar(stmt) or 0)
+
+    def _extract_lakh_budget(self, query: str) -> Decimal | None:
+        match = re.search(r"(?:under|below|less than)\D*(\d+(?:\.\d+)?)\s*lakh", query)
+        if match is None:
+            return None
+        return Decimal(str(float(match.group(1)) * 100000))
+
+    def _add_audit_event(
+        self,
+        organization_id: UUID | None,
+        actor_user_id: UUID | None,
+        action: str,
+        entity_type: str,
+        entity_id: UUID | None,
+        details: dict[str, object],
+    ) -> None:
+        self.session.add(
+            AuditEventRecord(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                action=action,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                details=self._json_details(details),
+            )
+        )
+
+    def _json_details(self, value: object) -> object:
+        if isinstance(value, UUID):
+            return str(value)
+        if isinstance(value, datetime):
+            return _iso(value)
+        if isinstance(value, Decimal):
+            return float(value)
+        if isinstance(value, dict):
+            return {str(key): self._json_details(item) for key, item in value.items()}
+        if isinstance(value, list | tuple | set):
+            return [self._json_details(item) for item in value]
+        return value
 
     async def _update_phase(self, meeting_id: UUID, event_type: str) -> None:
         meeting = await self.session.get(BoardMeetingRecord, meeting_id)
