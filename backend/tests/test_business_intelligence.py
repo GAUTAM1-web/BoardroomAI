@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from app.domain.business_intelligence.service import build_board_review, build_business_analysis
 from app.schemas.business import (
     BusinessAnalysisRequest,
@@ -82,6 +84,40 @@ def test_demo_mode_is_clearly_labeled_without_fake_suppliers() -> None:
     assert result["competitors"] == []
     assert "Demo data - not live local evidence." in result["warnings"]
     assert result["evidence_confidence"] == "Low"
+
+
+def test_evidence_panel_distinguishes_source_categories() -> None:
+    result = build_business_analysis(_request())
+
+    panel = result["evidence_panel"]
+
+    assert panel["summary"]["user_provided_information"] >= 1
+    assert panel["summary"]["ai_inference"] >= 1
+    assert "live_evidence" in panel["categories"]
+    assert result["evidence"][0]["source_category"] == "user_provided_information"
+
+
+def test_live_mode_gracefully_degrades_when_providers_are_disabled() -> None:
+    settings = SimpleNamespace(
+        maps_provider="none",
+        places_provider="none",
+        weather_provider="none",
+        news_provider="none",
+        currency_provider="none",
+        government_data_provider="none",
+        demographics_provider="none",
+        maps_api_key="",
+        places_api_key="",
+        business_data_mode="demo",
+        live_data_cache_ttl_seconds=900,
+    )
+
+    result = build_business_analysis(_request(data_mode="live"), settings=settings)
+
+    assert result["status"] == "completed"
+    assert result["live_intelligence"]["provider_health"]["providers"]
+    assert any(provider["status"] == "disabled" for provider in result["evidence_panel"]["provider_health"])
+    assert result["warnings"]
 
 
 def test_board_review_compares_actuals_without_blame() -> None:

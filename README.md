@@ -6,6 +6,8 @@ Milestone 5 expands the product into an evidence-based business decision platfor
 
 Milestone 6 upgrades the board itself into an evidence-first executive intelligence layer with permanent executive personalities, dynamic meeting modes, devil's advocate review, confidence timelines, replayable decisions, and final decision briefs. Executive Intelligence Engine V2 adds silent internal research, a staged reasoning pipeline, debate trees, confidence propagation, counterfactuals, scenario simulation, cognitive-bias detection, AI reflection, and a decision journal.
 
+Milestone 8 adds the enterprise workspace layer: default organizations, departments, teams, users, role permissions, comments, approvals, tasks, calendar events, notifications, knowledge search, templates, analytics, admin diagnostics, and audit logging. Milestone 10 polishes the product shell with a command palette, notification center, richer loading/empty/error states, offline awareness, a help center, and a clearer live-meeting progress experience.
+
 ## Current Capabilities
 
 - Premium founder dashboard with recent meetings, reports, generated ideas, board decisions, approval rate, average confidence, top industries, filters, and global search.
@@ -21,6 +23,8 @@ Milestone 6 upgrades the board itself into an evidence-first executive intellige
 - History for previous meetings with search, filters, favorites, compare, report preview, relaunch, delete, and re-download.
 - Export support for PDF, Markdown, and JSON.
 - Professional Settings workspace with provider status, maps status, redacted API-key posture, theme preference, data-mode status, export defaults, and client diagnostics.
+- Enterprise workspace with organizations, departments, teams, role-scoped permissions, approvals, tasks, calendar reviews, audit activity, templates, knowledge search, analytics, and admin diagnostics.
+- Product polish layer with Ctrl+K command palette, notification center, friendly recovery errors, offline detection, skeleton loading states, guided first-run help, and improved live meeting progress.
 - Evidence-based "Decide" workspace for local shops, service businesses, existing businesses, candidate properties, and startup concepts.
 - Optional location flow with manual entry, current-location permission only after user action, map-pin coordinate support, and no background tracking.
 - Manual/demo/live provider modes for competitors, suppliers, locations, and evidence. Demo mode is labeled `Demo data - not live local evidence`.
@@ -121,6 +125,8 @@ Provider secrets stay on the backend. The frontend never needs map or place-sear
 4. Launch a board meeting from a generated card or evidence brief, or open Boardroom, choose a meeting mode, and submit a manual founder brief.
 5. Watch the live executive discussion, vote changes, confidence evolution, risk signals, and report stream.
 6. Open History to search meetings, favorite startups, compare decisions, preview reports, relaunch a brief, delete history, or export artifacts.
+7. Open Enterprise to review approvals, tasks, calendar events, audit trail activity, organization metrics, and executive signals.
+8. Press `Ctrl+K` to jump between major workflows, start a demo meeting, or reuse recent searches.
 
 ## API Highlights
 
@@ -133,6 +139,19 @@ Provider secrets stay on the backend. The frontend never needs map or place-sear
 - `PATCH /api/v1/board-meetings/{meeting_id}/favorite`
 - `DELETE /api/v1/board-meetings/{meeting_id}`
 - `GET /api/v1/dashboard`
+- `GET /api/v1/organizations`
+- `POST /api/v1/organizations`
+- `GET /api/v1/enterprise/dashboard`
+- `GET /api/v1/enterprise/analytics`
+- `GET /api/v1/enterprise/admin`
+- `GET /api/v1/enterprise/audit`
+- `GET /api/v1/report-templates`
+- `GET /api/v1/knowledge/search?q=...`
+- `GET /api/v1/tasks`
+- `POST /api/v1/tasks`
+- `PATCH /api/v1/tasks/{task_id}`
+- `GET /api/v1/calendar`
+- `GET /api/v1/notifications`
 - `GET /api/v1/search?q=...`
 - `GET /api/v1/business-data/providers`
 - `POST /api/v1/business-analyses`
@@ -141,10 +160,25 @@ Provider secrets stay on the backend. The frontend never needs map or place-sear
 - `GET /api/v1/business-analyses/{analysis_id}/export?format=pdf`
 - `POST /api/v1/business-analyses/{analysis_id}/performance-entries`
 - `POST /api/v1/business-analyses/{analysis_id}/board-review`
+- `POST /api/v1/business-analyses/{analysis_id}/approvals`
+- `POST /api/v1/board-meetings/{meeting_id}/collaborators`
+- `POST /api/v1/board-meetings/{meeting_id}/approvals`
+- `GET /api/v1/reports/{meeting_id}/comments`
+- `POST /api/v1/reports/{meeting_id}/comments`
+- `PATCH /api/v1/reports/{meeting_id}/comments/{comment_id}`
+- `POST /api/v1/approvals/{workflow_id}/steps/{step_id}/decision`
 - `GET /api/v1/reports/{meeting_id}/export?format=pdf`
 - `GET /api/v1/reports/{meeting_id}/export?format=markdown`
 - `GET /api/v1/reports/{meeting_id}/export?format=json`
 - `WS /api/v1/board-meetings/live`
+
+## Documentation
+
+- API contract: `docs/API.md`
+- Architecture: `docs/ARCHITECTURE.md`
+- Enterprise guide: `docs/ENTERPRISE.md`
+- Desktop guide: `docs/DESKTOP.md`
+- Troubleshooting: `docs/TROUBLESHOOTING.md`
 
 ## Validation
 
@@ -174,6 +208,15 @@ Frontend lint:
 ```powershell
 cd frontend
 npm run lint
+```
+
+Docker and desktop release gates:
+
+```powershell
+docker compose build
+docker compose up -d
+cd frontend
+npm run desktop:pack
 ```
 
 ## Desktop Mode
@@ -226,7 +269,7 @@ The current AI provider is deterministic by design. It gives repeatable tests an
 
 Business intelligence follows the same offline-first rule. Demo mode is clearly labeled, manual mode uses user-entered evidence, and live-provider mode requires backend environment credentials. No provider API keys are exposed in frontend code.
 
-PostgreSQL remains the system of record for meeting modes, meetings, votes, confidence events, timeline turns, report sections, favorites, business analyses, evidence records, suppliers, validation tasks, performance entries, and exportable artifacts. Docker Compose remains the default development workflow.
+PostgreSQL remains the system of record for meeting modes, meetings, votes, confidence events, timeline turns, report sections, favorites, business analyses, evidence records, suppliers, validation tasks, performance entries, enterprise workspace records, collaboration artifacts, audit events, and exportable artifacts. Docker Compose remains the default development workflow.
 
 Production logs are structured JSON through `structlog`. Request logs include method, path, status code, and duration. Startup logs include environment, configured provider names, and data mode. Request bodies, API keys, and provider secrets are not logged.
 

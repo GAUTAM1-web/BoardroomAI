@@ -4,19 +4,27 @@ import { motion } from "framer-motion";
 import {
   Activity,
   BarChart3,
+  Bell,
   Bookmark,
   BookmarkCheck,
   BriefcaseBusiness,
+  Building2,
+  CalendarDays,
   CheckCircle2,
   CircleAlert,
   CircleDotDashed,
+  ClipboardList,
+  Command,
+  Copy,
   Database,
   Download,
   FileJson,
   FileText,
   Gauge,
+  HelpCircle,
   History,
   KeyRound,
+  Keyboard,
   Layers3,
   LineChart,
   Loader2,
@@ -36,6 +44,7 @@ import {
   Stethoscope,
   Trash2,
   TrendingUp,
+  Users,
   type LucideIcon,
   Vote,
   Wifi
@@ -55,6 +64,7 @@ import {
   deleteMeeting,
   fetchDashboard,
   fetchBusinessProviderStatus,
+  fetchEnterpriseDashboard,
   fetchMeetingDetail,
   fetchMeetings,
   generateStartupIdeas,
@@ -68,6 +78,7 @@ import type {
   BusinessProviderStatus,
   ConfidencePoint,
   DashboardSnapshot,
+  EnterpriseDashboard,
   GlobalSearchResults,
   LiveBoardroomEvent,
   LiveVote,
@@ -79,6 +90,7 @@ import type {
   StreamedReportSection
 } from "@/lib/types";
 import { APP_NAME, APP_VERSION, DEFAULT_EXPORT_FORMAT, RELEASE_CHANNEL } from "@/lib/app-config";
+import { ENTERPRISE_COPY } from "@/lib/enterprise-copy";
 import { cn } from "@/lib/utils";
 import { useBoardroomStore } from "@/store/use-boardroom-store";
 import { Button } from "@/components/ui/button";
@@ -91,9 +103,26 @@ type BriefFormState = StartupBriefPayload & {
 };
 
 type LiveStatus = "idle" | "connecting" | "running" | "completed" | "error";
-type AppView = "dashboard" | "decide" | "ideas" | "meeting" | "history" | "settings";
+type AppView =
+  | "dashboard"
+  | "enterprise"
+  | "decide"
+  | "ideas"
+  | "meeting"
+  | "history"
+  | "settings"
+  | "help";
 type ExportFormat = "pdf" | "markdown" | "json";
 type ThemePreference = "dark" | "system";
+type ToastTone = "success" | "warning" | "error" | "info";
+
+type ToastMessage = {
+  id: string;
+  tone: ToastTone;
+  title: string;
+  body: string;
+  createdAt: string;
+};
 
 type LiveMeetingState = {
   status: LiveStatus;
@@ -244,6 +273,7 @@ export function BoardroomApp() {
   const [ideaForm, setIdeaForm] = useState<StartupIdeaGenerationPayload>(initialIdeaForm);
   const [ideas, setIdeas] = useState<StartupIdea[]>([]);
   const [dashboard, setDashboard] = useState<DashboardSnapshot | null>(null);
+  const [enterpriseDashboard, setEnterpriseDashboard] = useState<EnterpriseDashboard | null>(null);
   const [history, setHistory] = useState<MeetingSummary[]>([]);
   const [historyQuery, setHistoryQuery] = useState("");
   const [favoriteOnly, setFavoriteOnly] = useState(false);
@@ -254,12 +284,18 @@ export function BoardroomApp() {
   const [searchResults, setSearchResults] = useState<GlobalSearchResults | null>(null);
   const [providerStatus, setProviderStatus] = useState<BusinessProviderStatus | null>(null);
   const [loadingDashboard, setLoadingDashboard] = useState(true);
+  const [loadingEnterprise, setLoadingEnterprise] = useState(true);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadingProviderStatus, setLoadingProviderStatus] = useState(false);
   const [generatingIdeas, setGeneratingIdeas] = useState(false);
   const [searching, setSearching] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [isOnline, setIsOnline] = useState(true);
   const [themePreference, setThemePreference] = useState<ThemePreference>("dark");
   const [exportDefault, setExportDefault] = useState<ExportFormat>(DEFAULT_EXPORT_FORMAT);
   const [liveState, setLiveState] = useState<LiveMeetingState>(initialLiveState);
@@ -268,22 +304,56 @@ export function BoardroomApp() {
 
   const payload = useMemo<StartupBriefPayload>(() => formToPayload(form), [form]);
 
+  const notify = useCallback((message: Omit<ToastMessage, "id" | "createdAt">) => {
+    setToasts((current) => [
+      {
+        ...message,
+        id: `${Date.now()}-${current.length}`,
+        createdAt: new Date().toISOString()
+      },
+      ...current
+    ].slice(0, 8));
+  }, []);
+
+  const refreshEnterprise = useCallback(async () => {
+    setLoadingEnterprise(true);
+    try {
+      setEnterpriseDashboard(await fetchEnterpriseDashboard());
+    } catch (error) {
+      notify({
+        tone: "warning",
+        title: ENTERPRISE_COPY.errors.workspace,
+        body: error instanceof Error ? error.message : "The enterprise workspace did not respond."
+      });
+    } finally {
+      setLoadingEnterprise(false);
+    }
+  }, [notify]);
+
   const refreshWorkspace = useCallback(async () => {
     setLoadingDashboard(true);
     try {
-      const [dashboardSnapshot, meetings] = await Promise.all([
+      const [dashboardSnapshot, meetings, enterpriseSnapshot] = await Promise.all([
         fetchDashboard(),
-        fetchMeetings({ limit: 40 })
+        fetchMeetings({ limit: 40 }),
+        fetchEnterpriseDashboard()
       ]);
       setDashboard(dashboardSnapshot);
       setHistory(meetings);
+      setEnterpriseDashboard(enterpriseSnapshot);
       setWorkspaceError(null);
     } catch (error) {
       setWorkspaceError(error instanceof Error ? error.message : "Workspace data failed to load");
+      notify({
+        tone: "error",
+        title: "Workspace refresh failed",
+        body: error instanceof Error ? error.message : "The workspace could not be refreshed."
+      });
     } finally {
       setLoadingDashboard(false);
+      setLoadingEnterprise(false);
     }
-  }, []);
+  }, [notify]);
 
   const refreshProviderStatus = useCallback(async () => {
     setLoadingProviderStatus(true);
@@ -396,12 +466,47 @@ export function BoardroomApp() {
       setIdeas(await generateStartupIdeas(ideaForm));
       setView("ideas");
       setWorkspaceError(null);
+      notify({
+        tone: "success",
+        title: "Ideas generated",
+        body: "New startup briefs are ready for board review."
+      });
     } catch (error) {
       setWorkspaceError(error instanceof Error ? error.message : "Startup idea generation failed");
+      notify({
+        tone: "error",
+        title: "Idea generation failed",
+        body: error instanceof Error ? error.message : "Try again or adjust the prompt."
+      });
     } finally {
       setGeneratingIdeas(false);
     }
   }
+
+  const runGlobalSearch = useCallback(
+    async (query: string) => {
+      setSearching(true);
+      try {
+        setGlobalQuery(query);
+        setSearchResults(await searchEverything(query));
+        setRecentSearches((current) => [
+          query,
+          ...current.filter((item) => item !== query)
+        ].slice(0, 6));
+        setWorkspaceError(null);
+      } catch (error) {
+        setWorkspaceError(error instanceof Error ? error.message : "Search failed");
+        notify({
+          tone: "warning",
+          title: "Search failed",
+          body: error instanceof Error ? error.message : "Check the backend connection and retry."
+        });
+      } finally {
+        setSearching(false);
+      }
+    },
+    [notify]
+  );
 
   async function handleGlobalSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -409,15 +514,7 @@ export function BoardroomApp() {
       setSearchResults(null);
       return;
     }
-    setSearching(true);
-    try {
-      setSearchResults(await searchEverything(globalQuery.trim()));
-      setWorkspaceError(null);
-    } catch (error) {
-      setWorkspaceError(error instanceof Error ? error.message : "Search failed");
-    } finally {
-      setSearching(false);
-    }
+    await runGlobalSearch(globalQuery.trim());
   }
 
   async function openHistoryDetail(meetingId: string) {
@@ -426,6 +523,11 @@ export function BoardroomApp() {
 
   async function toggleFavorite(summary: MeetingSummary) {
     await updateMeetingFavorite(summary.meeting_id, !summary.is_favorite);
+    notify({
+      tone: "success",
+      title: summary.is_favorite ? "Removed from favorites" : "Added to favorites",
+      body: summary.startup_idea
+    });
     await loadHistory();
     await refreshWorkspace();
   }
@@ -436,6 +538,11 @@ export function BoardroomApp() {
       return;
     }
     await deleteMeeting(summary.meeting_id);
+    notify({
+      tone: "info",
+      title: "Meeting deleted",
+      body: summary.startup_idea
+    });
     if (historyDetail?.meeting_id === summary.meeting_id) {
       setHistoryDetail(null);
     }
@@ -463,6 +570,20 @@ export function BoardroomApp() {
     if (storedExport === "pdf" || storedExport === "markdown" || storedExport === "json") {
       setExportDefault(storedExport);
     }
+
+    const storedSearches = window.localStorage.getItem("boardroom.recentSearches");
+    if (storedSearches) {
+      try {
+        const parsed = JSON.parse(storedSearches) as unknown;
+        if (Array.isArray(parsed)) {
+          setRecentSearches(parsed.map(String).slice(0, 6));
+        }
+      } catch {
+        setRecentSearches([]);
+      }
+    }
+
+    setIsOnline(window.navigator.onLine);
   }, []);
 
   useEffect(() => {
@@ -471,6 +592,51 @@ export function BoardroomApp() {
     document.documentElement.classList.add("dark");
     document.documentElement.dataset.themePreference = themePreference;
   }, [exportDefault, themePreference]);
+
+  useEffect(() => {
+    window.localStorage.setItem("boardroom.recentSearches", JSON.stringify(recentSearches));
+  }, [recentSearches]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandOpen((current) => !current);
+      }
+      if (event.key === "Escape") {
+        setCommandOpen(false);
+        setNotificationOpen(false);
+      }
+    }
+
+    function handleOnline() {
+      setIsOnline(true);
+      notify({
+        tone: "success",
+        title: "Connection restored",
+        body: "BoardroomAI is back online."
+      });
+      void refreshEnterprise();
+    }
+
+    function handleOffline() {
+      setIsOnline(false);
+      notify({
+        tone: "warning",
+        title: "Offline mode",
+        body: ENTERPRISE_COPY.errors.offline
+      });
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [notify, refreshEnterprise]);
 
   useEffect(() => {
     void refreshWorkspace();
@@ -509,6 +675,9 @@ export function BoardroomApp() {
               <NavButton active={view === "dashboard"} icon={BarChart3} onClick={() => setView("dashboard")}>
                 Dashboard
               </NavButton>
+              <NavButton active={view === "enterprise"} icon={Building2} onClick={() => setView("enterprise")}>
+                {ENTERPRISE_COPY.nav.enterprise}
+              </NavButton>
               <NavButton active={view === "decide"} icon={BriefcaseBusiness} onClick={() => setView("decide")}>
                 Decide
               </NavButton>
@@ -524,10 +693,30 @@ export function BoardroomApp() {
               <NavButton active={view === "settings"} icon={Settings} onClick={() => setView("settings")}>
                 Settings
               </NavButton>
+              <NavButton active={view === "help"} icon={HelpCircle} onClick={() => setView("help")}>
+                Help
+              </NavButton>
             </nav>
 
             <div className="flex flex-wrap items-center gap-2">
+              {!isOnline ? <OfflinePill /> : null}
               <StatusPill state={liveState} />
+              <Button
+                variant="quiet"
+                size="icon"
+                title={ENTERPRISE_COPY.nav.command}
+                onClick={() => setCommandOpen(true)}
+              >
+                <Command className="h-4 w-4" aria-hidden="true" />
+              </Button>
+              <Button
+                variant="quiet"
+                size="icon"
+                title={ENTERPRISE_COPY.nav.notifications}
+                onClick={() => setNotificationOpen(true)}
+              >
+                <Bell className="h-4 w-4" aria-hidden="true" />
+              </Button>
               <Button variant="quiet" size="icon" title="Reset boardroom" onClick={resetBoardroom}>
                 <RotateCcw className="h-4 w-4" aria-hidden="true" />
               </Button>
@@ -555,9 +744,11 @@ export function BoardroomApp() {
         </header>
 
         {workspaceError ? (
-          <div className="mt-4 rounded-md border border-board-amber/30 bg-board-amber/10 p-3 text-sm text-board-amber">
-            {workspaceError}
-          </div>
+          <FriendlyError
+            title="Workspace unavailable"
+            detail={workspaceError}
+            onRetry={refreshWorkspace}
+          />
         ) : null}
 
         {searchResults ? (
@@ -583,6 +774,14 @@ export function BoardroomApp() {
                 setView("history");
                 void openHistoryDetail(meetingId);
               }}
+            />
+          ) : null}
+
+          {view === "enterprise" ? (
+            <EnterpriseWorkspaceView
+              dashboard={enterpriseDashboard}
+              loading={loadingEnterprise}
+              onRefresh={refreshEnterprise}
             />
           ) : null}
 
@@ -647,8 +846,28 @@ export function BoardroomApp() {
               onRefresh={refreshProviderStatus}
             />
           ) : null}
+
+          {view === "help" ? <HelpCenterView onNavigate={setView} /> : null}
         </div>
       </div>
+      <CommandPalette
+        open={commandOpen}
+        recentSearches={recentSearches}
+        onClose={() => setCommandOpen(false)}
+        onNavigate={setView}
+        onSearch={runGlobalSearch}
+        onStartDemo={() => {
+          setCommandOpen(false);
+          startLiveMeeting(initialForm);
+        }}
+      />
+      <NotificationCenter
+        open={notificationOpen}
+        toasts={toasts}
+        enterpriseDashboard={enterpriseDashboard}
+        onClose={() => setNotificationOpen(false)}
+      />
+      <ToastShelf toasts={toasts.slice(0, 3)} onDismiss={(id) => setToasts((current) => current.filter((item) => item.id !== id))} />
     </main>
   );
 }
@@ -801,6 +1020,222 @@ function DashboardView({
   );
 }
 
+function EnterpriseWorkspaceView({
+  dashboard,
+  loading,
+  onRefresh
+}: {
+  dashboard: EnterpriseDashboard | null;
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  const analytics = dashboard?.analytics ?? {};
+  const executiveDashboard = dashboard?.executive_dashboard ?? {};
+  const meetingMetrics = isRecord(analytics.meetings) ? analytics.meetings : {};
+  const meetings = getNumber(meetingMetrics, "total");
+  const completed = getNumber(meetingMetrics, "completed");
+  const successRate = getNumber(analytics, "success_rate");
+  const approvalHours = getNumber(analytics, "approval_time_hours");
+  const organizationName = getString(dashboard?.organization, "name") ?? "Default Organization";
+
+  return (
+    <div className="space-y-4">
+      <section className="flex flex-col gap-3 rounded-lg border border-white/10 bg-white/[0.035] p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="teal">{organizationName}</Badge>
+            <Badge>{getString(dashboard?.organization, "default_locale") ?? "en"}</Badge>
+          </div>
+          <h2 className="mt-3 break-words text-2xl font-semibold text-white">
+            {ENTERPRISE_COPY.dashboard.title}
+          </h2>
+          <p className="mt-1 text-sm text-board-muted">{ENTERPRISE_COPY.dashboard.subtitle}</p>
+        </div>
+        <Button type="button" variant="quiet" onClick={onRefresh} disabled={loading}>
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+          Refresh
+        </Button>
+      </section>
+
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          icon={Building2}
+          label={ENTERPRISE_COPY.dashboard.departments}
+          value={loading ? "..." : String(dashboard?.departments.length ?? 0)}
+          detail={`${dashboard?.teams.length ?? 0} teams`}
+        />
+        <MetricCard
+          icon={Users}
+          label={ENTERPRISE_COPY.dashboard.users}
+          value={loading ? "..." : String(dashboard?.users.length ?? 0)}
+          detail="role-scoped workspace"
+        />
+        <MetricCard
+          icon={CheckCircle2}
+          label="Decision success"
+          value={loading ? "..." : percent(successRate)}
+          detail={`${completed} completed of ${meetings}`}
+        />
+        <MetricCard
+          icon={Gauge}
+          label="Approval time"
+          value={loading ? "..." : `${approvalHours}h`}
+          detail="average sign-off"
+        />
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
+        <Panel
+          icon={ClipboardList}
+          title={ENTERPRISE_COPY.dashboard.pendingApprovals}
+          subtitle={loading ? ENTERPRISE_COPY.loading.approvals : `${dashboard?.pending_approvals.length ?? 0} waiting`}
+        >
+          {loading ? (
+            <SkeletonRows label={ENTERPRISE_COPY.loading.approvals} />
+          ) : dashboard?.pending_approvals.length ? (
+            <div className="space-y-3">
+              {dashboard.pending_approvals.map((approval) => (
+                <EnterpriseListItem
+                  key={String(approval.id)}
+                  title={getString(approval, "reason") ?? "Approval workflow"}
+                  meta={`${getString(approval, "status") ?? "pending"} - ${formatDate(getString(approval, "created_at"))}`}
+                  badge={`${Array.isArray(approval.steps) ? approval.steps.length : 0} steps`}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={ClipboardList}
+              label={ENTERPRISE_COPY.empty.approvals}
+              detail="New approval requests from meetings and analyses will land here."
+            />
+          )}
+        </Panel>
+
+        <Panel
+          icon={CalendarDays}
+          title={ENTERPRISE_COPY.dashboard.calendar}
+          subtitle={`${dashboard?.upcoming_reviews.length ?? 0} scheduled`}
+        >
+          {loading ? (
+            <SkeletonRows label="Loading reviews..." />
+          ) : dashboard?.upcoming_reviews.length ? (
+            <div className="space-y-3">
+              {dashboard.upcoming_reviews.map((event) => (
+                <EnterpriseListItem
+                  key={String(event.id)}
+                  title={getString(event, "title") ?? "Board review"}
+                  meta={formatDate(getString(event, "starts_at"))}
+                  badge={titleCase(getString(event, "event_type") ?? "review")}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={CalendarDays}
+              label={ENTERPRISE_COPY.empty.calendar}
+              detail="Follow-ups and deadlines will appear once tasks are scheduled."
+            />
+          )}
+        </Panel>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-3">
+        <Panel icon={CheckCircle2} title={ENTERPRISE_COPY.dashboard.tasks} subtitle={`${dashboard?.tasks.length ?? 0} active`}>
+          {loading ? (
+            <SkeletonRows label="Loading tasks..." />
+          ) : dashboard?.tasks.length ? (
+            <div className="space-y-3">
+              {dashboard.tasks.map((task) => (
+                <EnterpriseListItem
+                  key={String(task.id)}
+                  title={getString(task, "title") ?? "Task"}
+                  meta={getString(task, "description") ?? "No description"}
+                  badge={titleCase(getString(task, "status") ?? "open")}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={CheckCircle2}
+              label={ENTERPRISE_COPY.empty.tasks}
+              detail="Create follow-up tasks from recommendations and approval actions."
+            />
+          )}
+        </Panel>
+
+        <Panel icon={Activity} title={ENTERPRISE_COPY.dashboard.activity} subtitle={`${dashboard?.board_activity.length ?? 0} events`}>
+          {loading ? (
+            <SkeletonRows label={ENTERPRISE_COPY.loading.activity} />
+          ) : dashboard?.board_activity.length ? (
+            <div className="space-y-3">
+              {dashboard.board_activity.map((activity) => (
+                <EnterpriseListItem
+                  key={String(activity.id)}
+                  title={titleCase(getString(activity, "action") ?? "activity")}
+                  meta={`${getString(activity, "entity_type") ?? "entity"} - ${formatDate(getString(activity, "created_at"))}`}
+                  badge="Audit"
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={Activity}
+              label={ENTERPRISE_COPY.empty.activity}
+              detail="Audit events are captured automatically as the board works."
+            />
+          )}
+        </Panel>
+
+        <Panel icon={LineChart} title={ENTERPRISE_COPY.dashboard.executiveSignals} subtitle="Decision quality">
+          <div className="space-y-3">
+            <SignalRow
+              label="Acceptance rate"
+              value={percent(getNumber(executiveDashboard, "acceptance_rate"))}
+            />
+            <SignalRow
+              label="Replay frequency"
+              value={String(getNumber(executiveDashboard, "replay_frequency"))}
+            />
+            <SignalRow label="Recent meetings" value={String(dashboard?.recent_meetings.length ?? 0)} />
+          </div>
+        </Panel>
+      </section>
+    </div>
+  );
+}
+
+function EnterpriseListItem({
+  title,
+  meta,
+  badge
+}: {
+  title: string;
+  meta: string;
+  badge: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-md border border-white/10 bg-white/[0.035] p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="break-words text-sm font-semibold text-white">{title}</div>
+          <div className="mt-1 break-words text-xs leading-5 text-board-muted">{meta}</div>
+        </div>
+        <Badge tone="teal">{badge}</Badge>
+      </div>
+    </div>
+  );
+}
+
+function SignalRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border border-white/10 bg-white/[0.035] p-3">
+      <span className="break-words text-sm text-board-muted">{label}</span>
+      <span className="shrink-0 text-sm font-semibold text-white">{value}</span>
+    </div>
+  );
+}
+
 function IdeasView({
   form,
   setForm,
@@ -946,6 +1381,7 @@ function MeetingView({
 
       <section className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(420px,0.8fr)]">
         <div className="min-w-0 space-y-4">
+          <MeetingProgressPanel state={liveState} />
           <BoardroomStage state={liveState} />
           <TimelinePanel state={liveState} />
         </div>
@@ -1192,9 +1628,7 @@ function SettingsView({
       </section>
 
       {settingsError ? (
-        <div className="rounded-md border border-board-amber/30 bg-board-amber/10 p-3 text-sm text-board-amber">
-          {settingsError}
-        </div>
+        <FriendlyError title="Provider diagnostics unavailable" detail={settingsError} onRetry={onRefresh} />
       ) : null}
 
       <div className="grid gap-4 xl:grid-cols-2">
@@ -1301,6 +1735,96 @@ function SettingsView({
           <SettingsMetric icon={ShieldCheck} label="Secrets" value="Redacted" detail="never shown" />
         </div>
       </Panel>
+    </div>
+  );
+}
+
+function HelpCenterView({ onNavigate }: { onNavigate: (view: AppView) => void }) {
+  return (
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
+      <Panel icon={HelpCircle} title="Help Center" subtitle="Shortcuts, glossary, and report guidance">
+        <div className="grid gap-3 md:grid-cols-2">
+          <HelpTile
+            icon={Keyboard}
+            title="Keyboard shortcuts"
+            items={["Ctrl+K opens commands", "Escape closes overlays", "Tab moves through controls"]}
+          />
+          <HelpTile
+            icon={FileText}
+            title="Report structure"
+            items={["Executive summary first", "Decision and confidence next", "Evidence and risks below"]}
+          />
+          <HelpTile
+            icon={Star}
+            title="Executive roles"
+            items={["CEO frames strategic fit", "CFO reviews economics", "Risk Officer challenges assumptions"]}
+          />
+          <HelpTile
+            icon={Gauge}
+            title="Decision score"
+            items={["Confidence is board agreement", "Risk shows unresolved exposure", "Replay reveals drift"]}
+          />
+        </div>
+      </Panel>
+
+      <Panel icon={Sparkles} title="First-run Tour" subtitle="Fast path to value">
+        <div className="space-y-3">
+          <TourStep number="1" title="Generate or enter a brief" body="Start with a business idea, industry, market, budget, and timeline." />
+          <TourStep number="2" title="Run a live board meeting" body="Watch executives debate, vote, and build a report in real time." />
+          <TourStep number="3" title="Review enterprise workflow" body="Track approvals, tasks, calendar events, and activity in one workspace." />
+          <div className="flex flex-wrap gap-2 pt-2">
+            <Button type="button" onClick={() => onNavigate("ideas")}>
+              <Sparkles className="h-4 w-4" />
+              Generate Ideas
+            </Button>
+            <Button type="button" variant="quiet" onClick={() => onNavigate("enterprise")}>
+              <Building2 className="h-4 w-4" />
+              Open Enterprise
+            </Button>
+          </div>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function HelpTile({
+  icon: Icon,
+  title,
+  items
+}: {
+  icon: LucideIcon;
+  title: string;
+  items: string[];
+}) {
+  return (
+    <div className="min-w-0 rounded-md border border-white/10 bg-white/[0.035] p-3">
+      <div className="flex items-center gap-2">
+        <Icon className="h-4 w-4 shrink-0 text-board-teal" />
+        <h3 className="break-words text-sm font-semibold text-white">{title}</h3>
+      </div>
+      <div className="mt-3 space-y-2">
+        {items.map((item) => (
+          <div key={item} className="flex gap-2 text-xs leading-5 text-board-muted">
+            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-board-teal" />
+            <span className="break-words">{item}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TourStep({ number, title, body }: { number: string; title: string; body: string }) {
+  return (
+    <div className="flex gap-3 rounded-md border border-white/10 bg-white/[0.035] p-3">
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-board-teal text-sm font-semibold text-board-ink">
+        {number}
+      </div>
+      <div className="min-w-0">
+        <div className="break-words text-sm font-semibold text-white">{title}</div>
+        <p className="mt-1 break-words text-xs leading-5 text-board-muted">{body}</p>
+      </div>
     </div>
   );
 }
@@ -1498,6 +2022,51 @@ function FounderBriefPanel({
         </div>
       ) : null}
     </form>
+  );
+}
+
+function MeetingProgressPanel({ state }: { state: LiveMeetingState }) {
+  const phases = [
+    { key: "brief", label: "Brief", done: state.status !== "idle" },
+    { key: "debate", label: "Debate", done: state.timeline.length > 0 },
+    { key: "vote", label: "Vote", done: Object.keys(state.votes).length > 0 },
+    { key: "report", label: "Report", done: Object.keys(state.reportSections).length > 0 },
+    { key: "complete", label: "Complete", done: state.status === "completed" }
+  ];
+  const activeIndex = Math.max(0, phases.findIndex((phase) => !phase.done));
+
+  return (
+    <Panel icon={Activity} title="Meeting Progress" subtitle={activeStatusLabel(state)}>
+      <div className="grid gap-2 sm:grid-cols-5">
+        {phases.map((phase, index) => {
+          const active = index === activeIndex && state.status !== "completed";
+          return (
+            <div
+              key={phase.key}
+              className={cn(
+                "rounded-md border p-3 transition",
+                phase.done
+                  ? "border-board-teal/40 bg-board-teal/10"
+                  : active
+                    ? "border-board-amber/40 bg-board-amber/10"
+                    : "border-white/10 bg-white/[0.035]"
+              )}
+            >
+              <div className="flex items-center gap-2">
+                {phase.done ? (
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-board-teal" />
+                ) : active ? (
+                  <Activity className="h-4 w-4 shrink-0 animate-pulse text-board-amber" />
+                ) : (
+                  <CircleDotDashed className="h-4 w-4 shrink-0 text-board-muted" />
+                )}
+                <span className="break-words text-sm font-medium text-white">{phase.label}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Panel>
   );
 }
 
@@ -2038,6 +2607,300 @@ function GlobalSearchPanel({
   );
 }
 
+function CommandPalette({
+  open,
+  recentSearches,
+  onClose,
+  onNavigate,
+  onSearch,
+  onStartDemo
+}: {
+  open: boolean;
+  recentSearches: string[];
+  onClose: () => void;
+  onNavigate: (view: AppView) => void;
+  onSearch: (query: string) => void | Promise<void>;
+  onStartDemo: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const commands = [
+    { label: "Open dashboard", icon: BarChart3, action: () => onNavigate("dashboard") },
+    { label: "Open enterprise workspace", icon: Building2, action: () => onNavigate("enterprise") },
+    { label: "Start analysis", icon: BriefcaseBusiness, action: () => onNavigate("decide") },
+    { label: "Generate startup ideas", icon: Sparkles, action: () => onNavigate("ideas") },
+    { label: "Run demo board meeting", icon: Wifi, action: onStartDemo },
+    { label: "Jump to history", icon: History, action: () => onNavigate("history") },
+    { label: "Open settings", icon: Settings, action: () => onNavigate("settings") },
+    { label: "Open help center", icon: HelpCircle, action: () => onNavigate("help") }
+  ];
+  const normalized = query.trim().toLowerCase();
+  const filteredCommands = commands.filter((command) =>
+    command.label.toLowerCase().includes(normalized)
+  );
+
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <div className="mx-auto mt-16 max-w-2xl overflow-hidden rounded-lg border border-white/10 bg-board-panel shadow-glow">
+        <div className="flex items-center gap-3 border-b border-white/10 p-3">
+          <Command className="h-5 w-5 shrink-0 text-board-teal" />
+          <Input
+            autoFocus
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search commands, meetings, organizations"
+            className="border-0 bg-transparent focus-visible:ring-0"
+          />
+          <Button type="button" variant="quiet" size="sm" onClick={onClose}>
+            Esc
+          </Button>
+        </div>
+
+        <div className="max-h-[60vh] overflow-y-auto p-2">
+          {query.trim() ? (
+            <CommandRow
+              icon={Search}
+              label={`Search "${query.trim()}"`}
+              detail="Search meetings, reports, executives, and tags"
+              onClick={() => {
+                void onSearch(query.trim());
+                onNavigate("history");
+                onClose();
+              }}
+            />
+          ) : null}
+
+          {filteredCommands.map((command) => (
+            <CommandRow
+              key={command.label}
+              icon={command.icon}
+              label={command.label}
+              detail="Press Enter or click to run"
+              onClick={() => {
+                command.action();
+                onClose();
+              }}
+            />
+          ))}
+
+          {recentSearches.length ? (
+            <div className="mt-2 border-t border-white/10 pt-2">
+              <div className="px-3 py-2 text-xs uppercase text-board-muted">Recent searches</div>
+              {recentSearches.map((item) => (
+                <CommandRow
+                  key={item}
+                  icon={Search}
+                  label={item}
+                  detail="Recent search"
+                  onClick={() => {
+                    void onSearch(item);
+                    onNavigate("history");
+                    onClose();
+                  }}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CommandRow({
+  icon: Icon,
+  label,
+  detail,
+  onClick
+}: {
+  icon: LucideIcon;
+  label: string;
+  detail: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full min-w-0 items-center gap-3 rounded-md p-3 text-left transition hover:bg-white/[0.06] focus-visible:bg-white/[0.08]"
+    >
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-board-teal">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="break-words text-sm font-semibold text-white">{label}</div>
+        <div className="mt-1 break-words text-xs text-board-muted">{detail}</div>
+      </div>
+    </button>
+  );
+}
+
+function NotificationCenter({
+  open,
+  toasts,
+  enterpriseDashboard,
+  onClose
+}: {
+  open: boolean;
+  toasts: ToastMessage[];
+  enterpriseDashboard: EnterpriseDashboard | null;
+  onClose: () => void;
+}) {
+  if (!open) {
+    return null;
+  }
+  const workflowItems = [
+    ...(enterpriseDashboard?.pending_approvals ?? []).map((item) => ({
+      id: `approval-${String(item.id)}`,
+      tone: "warning" as ToastTone,
+      title: "Approval waiting",
+      body: getString(item, "reason") ?? "A workflow needs review.",
+      createdAt: getString(item, "created_at") ?? new Date().toISOString()
+    })),
+    ...(enterpriseDashboard?.tasks ?? []).slice(0, 5).map((item) => ({
+      id: `task-${String(item.id)}`,
+      tone: "info" as ToastTone,
+      title: getString(item, "title") ?? "Task",
+      body: getString(item, "description") ?? titleCase(getString(item, "status") ?? "open"),
+      createdAt: getString(item, "created_at") ?? new Date().toISOString()
+    }))
+  ];
+  const items = [...toasts, ...workflowItems].slice(0, 20);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <aside className="ml-auto flex h-full max-w-md flex-col overflow-hidden rounded-lg border border-white/10 bg-board-panel shadow-glow">
+        <div className="flex items-center justify-between gap-3 border-b border-white/10 p-4">
+          <div>
+            <h2 className="text-base font-semibold text-white">Notification Center</h2>
+            <p className="text-sm text-board-muted">Background updates and workflow alerts</p>
+          </div>
+          <Button type="button" variant="quiet" size="icon" onClick={onClose} title="Close">
+            <CircleAlert className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+          {items.length ? (
+            items.map((item) => <ToastCard key={item.id} toast={item} />)
+          ) : (
+            <EmptyState
+              icon={Bell}
+              label="No notifications yet"
+              detail="Completed meetings, approvals, and provider alerts will appear here."
+            />
+          )}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function ToastShelf({
+  toasts,
+  onDismiss
+}: {
+  toasts: ToastMessage[];
+  onDismiss: (id: string) => void;
+}) {
+  if (!toasts.length) {
+    return null;
+  }
+  return (
+    <div className="fixed bottom-4 right-4 z-40 w-[min(360px,calc(100vw-2rem))] space-y-2">
+      {toasts.map((toast) => (
+        <div key={toast.id} className="relative">
+          <ToastCard toast={toast} />
+          <button
+            type="button"
+            className="absolute right-2 top-2 text-xs text-board-muted hover:text-white"
+            onClick={() => onDismiss(toast.id)}
+          >
+            Dismiss
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ToastCard({ toast }: { toast: ToastMessage }) {
+  const Icon =
+    toast.tone === "success"
+      ? CheckCircle2
+      : toast.tone === "error"
+        ? CircleAlert
+        : toast.tone === "warning"
+          ? CircleAlert
+          : Bell;
+  return (
+    <div className="rounded-md border border-white/10 bg-board-panel/95 p-3 shadow-glow">
+      <div className="flex items-start gap-3">
+        <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", toastToneClass(toast.tone))} />
+        <div className="min-w-0 flex-1 pr-12">
+          <div className="break-words text-sm font-semibold text-white">{toast.title}</div>
+          <div className="mt-1 break-words text-xs leading-5 text-board-muted">{toast.body}</div>
+          <div className="mt-2 text-[11px] uppercase text-board-muted">{formatTime(toast.createdAt)}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FriendlyError({
+  title,
+  detail,
+  onRetry
+}: {
+  title: string;
+  detail: string;
+  onRetry: () => void;
+}) {
+  async function copyDetails() {
+    await navigator.clipboard?.writeText(detail);
+  }
+
+  return (
+    <div className="mt-4 rounded-md border border-board-amber/30 bg-board-amber/10 p-4 text-sm text-board-amber">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="font-semibold">{title}</div>
+          <p className="mt-1 break-words text-board-mist">
+            The backend may still be starting, offline, or waiting for database migrations.
+          </p>
+          <details className="mt-2">
+            <summary className="cursor-pointer">Diagnostics</summary>
+            <pre className="mt-2 max-h-32 overflow-auto rounded bg-black/20 p-2 text-xs text-board-muted">
+              {detail}
+            </pre>
+          </details>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button type="button" variant="quiet" size="sm" onClick={copyDetails}>
+            <Copy className="h-4 w-4" />
+            Copy
+          </Button>
+          <Button type="button" size="sm" onClick={onRetry}>
+            <RotateCcw className="h-4 w-4" />
+            Retry
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OfflinePill() {
+  return (
+    <div className="inline-flex h-10 items-center gap-2 rounded-md border border-board-amber/30 bg-board-amber/10 px-3 text-sm text-board-amber">
+      <CircleAlert className="h-4 w-4 shrink-0" />
+      Offline
+    </div>
+  );
+}
+
 function StartupIdeaCard({
   idea,
   onStart
@@ -2288,11 +3151,25 @@ function Panel({
   );
 }
 
-function EmptyState({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
+function EmptyState({
+  icon: Icon,
+  label,
+  detail,
+  action
+}: {
+  icon: LucideIcon;
+  label: string;
+  detail?: string;
+  action?: ReactNode;
+}) {
   return (
     <div className="flex min-h-36 flex-col items-center justify-center rounded-md border border-dashed border-white/10 bg-white/[0.02] p-4 text-center">
-      <Icon className="mb-3 h-5 w-5 text-board-muted" />
-      <p className="break-words text-sm text-board-muted">{label}</p>
+      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-md border border-white/10 bg-white/[0.035]">
+        <Icon className="h-5 w-5 text-board-muted" />
+      </div>
+      <p className="break-words text-sm font-medium text-board-mist">{label}</p>
+      {detail ? <p className="mt-2 max-w-sm break-words text-xs leading-5 text-board-muted">{detail}</p> : null}
+      {action ? <div className="mt-4">{action}</div> : null}
     </div>
   );
 }
@@ -2420,11 +3297,16 @@ function SectionValue({ value }: { value: unknown }) {
   return <p className="text-sm text-board-muted">Unsupported section value</p>;
 }
 
-function SkeletonRows() {
+function SkeletonRows({ label }: { label?: string }) {
   return (
     <div className="space-y-3">
+      {label ? <div className="text-xs uppercase text-board-muted">{label}</div> : null}
       {Array.from({ length: 4 }).map((_, index) => (
-        <div key={index} className="h-16 animate-pulse rounded-md bg-white/[0.05]" />
+        <div key={index} className="rounded-md border border-white/10 bg-white/[0.035] p-3">
+          <div className="h-3 w-2/3 animate-pulse rounded bg-white/[0.07]" />
+          <div className="mt-3 h-3 w-full animate-pulse rounded bg-white/[0.05]" />
+          <div className="mt-2 h-3 w-4/5 animate-pulse rounded bg-white/[0.05]" />
+        </div>
       ))}
     </div>
   );
@@ -2710,6 +3592,35 @@ function decisionTone(value: string): "muted" | "teal" | "amber" | "rose" {
     return "rose";
   }
   return "muted";
+}
+
+function toastToneClass(tone: ToastTone) {
+  if (tone === "success") {
+    return "text-board-teal";
+  }
+  if (tone === "warning") {
+    return "text-board-amber";
+  }
+  if (tone === "error") {
+    return "text-board-rose";
+  }
+  return "text-board-muted";
+}
+
+function getString(value: unknown, key: string): string | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const item = value[key];
+  return typeof item === "string" ? item : null;
+}
+
+function getNumber(value: unknown, key: string): number {
+  if (!isRecord(value)) {
+    return 0;
+  }
+  const item = value[key];
+  return typeof item === "number" && Number.isFinite(item) ? item : 0;
 }
 
 function isScoreRecord(value: unknown): value is Record<string, number> {

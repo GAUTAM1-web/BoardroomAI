@@ -12,6 +12,8 @@ Version prefix:
 /api/v1
 ```
 
+Enterprise role checks use the optional `X-Boardroom-Role` header. When the header is omitted, the API defaults to `Administrator` so existing single-user and desktop flows continue to work unchanged.
+
 ## GET /api/v1/executives
 
 Returns the 19 executive profiles used by the boardroom, including the permanent Risk Officer.
@@ -153,6 +155,41 @@ Returns dashboard statistics:
 - recent meetings
 - recent reports
 - recent board decisions
+
+## Enterprise Workspace Endpoints
+
+These endpoints are additive and preserve all original boardroom and business-analysis APIs.
+
+- `GET /api/v1/organizations` - list organizations, including the seeded default workspace.
+- `POST /api/v1/organizations` - create an organization with default departments, teams, templates, knowledge, and review calendar.
+- `GET /api/v1/enterprise/dashboard` - organization dashboard with departments, teams, users, recent meetings, pending approvals, tasks, board activity, upcoming reviews, analytics, and executive signals.
+- `GET /api/v1/enterprise/analytics` - organization metrics for meetings, decisions, approval time, active executives, success rate, evidence quality, confidence trends, risk trends, and recommendation outcomes.
+- `GET /api/v1/enterprise/admin` - users, organizations, redacted API-key posture, providers, feature flags, diagnostics, and usage statistics.
+- `GET /api/v1/enterprise/audit` - audit events such as meeting started, report generated, comment created, task updated, export-ready activity, and approval decisions.
+- `GET /api/v1/report-templates` - seeded templates for restaurant, retail, manufacturing, healthcare, technology, franchise, and export reports.
+- `GET /api/v1/knowledge/search?q=...` - natural-language-ready knowledge search across reports, lessons, templates, meeting history, and best-practice seeds.
+- `GET /api/v1/tasks` - list enterprise tasks, optionally filtered by status.
+- `POST /api/v1/tasks` - create a task from a recommendation or manual action.
+- `PATCH /api/v1/tasks/{task_id}` - update task title, description, status, or due date.
+- `GET /api/v1/calendar` - list board reviews, follow-ups, deadlines, and related events.
+- `GET /api/v1/notifications` - list in-app notification records.
+
+## Collaboration and Approval Endpoints
+
+- `POST /api/v1/board-meetings/{meeting_id}/collaborators` - join or update a meeting collaborator.
+- `GET /api/v1/reports/{meeting_id}/comments` - list report comments and replies.
+- `POST /api/v1/reports/{meeting_id}/comments` - create a comment with optional section key, parent comment, and mentions.
+- `PATCH /api/v1/reports/{meeting_id}/comments/{comment_id}` - resolve or reopen a comment.
+- `POST /api/v1/board-meetings/{meeting_id}/approvals` - create a meeting approval workflow.
+- `POST /api/v1/business-analyses/{analysis_id}/approvals` - create a business-analysis approval workflow.
+- `POST /api/v1/approvals/{workflow_id}/steps/{step_id}/decision` - approve or reject a workflow step.
+
+Role permissions:
+
+- Founder, CEO, Administrator: full workspace administration and approvals.
+- Manager: create/edit meetings, comment, export, approve, and manage tasks.
+- Analyst: create meetings, view meetings, comment, and manage tasks.
+- Viewer: view-only access.
 
 ## GET /api/v1/business-data/providers
 

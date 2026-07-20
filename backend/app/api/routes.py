@@ -28,6 +28,7 @@ from app.domain.boardroom.streaming import LiveBoardMeetingOrchestrator
 from app.domain.business_intelligence.service import (
     build_board_review,
     build_business_analysis,
+    clear_live_data_cache,
     provider_status,
 )
 from app.domain.enterprise.security import has_permission, normalize_enterprise_role
@@ -386,6 +387,12 @@ async def global_search(
 
 @router.get("/business-data/providers", response_model=BusinessProviderStatusResponse)
 async def business_provider_status() -> BusinessProviderStatusResponse:
+    return BusinessProviderStatusResponse.model_validate(provider_status(get_settings()))
+
+
+@router.post("/business-data/providers/retry", response_model=BusinessProviderStatusResponse)
+async def retry_business_providers() -> BusinessProviderStatusResponse:
+    clear_live_data_cache()
     return BusinessProviderStatusResponse.model_validate(provider_status(get_settings()))
 
 

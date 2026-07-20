@@ -2,6 +2,9 @@
 
 ## 1.0.0-rc.1
 
+- Added enterprise workspace support with organizations, departments, teams, users, role permissions, comments, approvals, tasks, calendar events, notifications, templates, knowledge search, admin diagnostics, analytics, and audit trail endpoints.
+- Added a polished Enterprise view in the desktop/web shell with organization KPIs, pending approvals, tasks, calendar reviews, board activity, and executive signals.
+- Added Ctrl+K command palette, notification center, toast history, offline status, guided help center, first-run tour, friendlier recovery errors, richer skeleton loaders, improved empty states, and live meeting progress.
 - Added Executive Intelligence Engine V2 with silent internal research, staged reasoning pipeline, debate tree, confidence propagation, counterfactual analysis, scenario simulator, cognitive-bias detection, challenge questions, AI reflection, validation plan, decision explainability, and decision journal sections.
 - Added dynamic specialist profiles that join only relevant meetings, including medical, compliance, cloud, AI, pricing, inventory, store operations, chef, food safety, and supply-chain specialists.
 - Expanded live `meeting_started` assessment payload with internal research and executive challenge questions.

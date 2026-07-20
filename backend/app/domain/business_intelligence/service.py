@@ -5,6 +5,13 @@ from math import ceil
 from typing import Any
 from uuid import uuid4
 
+from app.domain.business_intelligence.live_data import (
+    clear_live_data_cache as _clear_live_data_cache,
+)
+from app.domain.business_intelligence.live_data import (
+    gather_live_business_intelligence,
+    provider_health,
+)
 from app.schemas.business import (
     BusinessAnalysisRequest,
     BusinessPerformanceEntryRequest,
@@ -198,9 +205,19 @@ def build_business_analysis(
     location_label = _location_label(payload)
     warnings = _provider_warnings(payload, settings)
     evidence = _base_evidence(payload, generated_at)
+    live_intelligence = gather_live_business_intelligence(
+        payload,
+        profile,
+        settings,
+        generated_at,
+    )
+    warnings.extend(live_intelligence["warnings"])
+    evidence.extend(live_intelligence["evidence"])
 
     competitors = _competitors(payload.manual_competitors, payload, generated_at, evidence)
+    competitors.extend(live_intelligence["competitors"])
     suppliers = _suppliers(payload.manual_suppliers, payload, profile, generated_at, evidence)
+    suppliers.extend(live_intelligence["suppliers"])
     score = _opportunity_score(payload, profile, competitors, suppliers, evidence)
     candidate_areas = _candidate_areas(payload, score, suppliers)
     properties = _properties(payload, suppliers)
@@ -228,6 +245,7 @@ def build_business_analysis(
         daily_sales=daily_sales,
         validation_plan=validation_plan,
         evidence=evidence,
+        live_intelligence=live_intelligence,
         missing_information=missing_information,
         performance_tracking=performance_tracking,
     )
@@ -271,6 +289,7 @@ def build_business_analysis(
         "recommendation": recommendation,
         "opportunity_score": score,
         "evidence_confidence": _evidence_confidence(evidence, payload),
+        "evidence_panel": _evidence_panel(evidence, live_intelligence["provider_health"]),
         "evidence": evidence,
         "competitors": competitors,
         "suppliers": suppliers,
@@ -282,6 +301,7 @@ def build_business_analysis(
         "daily_sales": daily_sales,
         "validation_plan": validation_plan,
         "performance_tracking": performance_tracking,
+        "live_intelligence": live_intelligence,
         "missing_information": missing_information,
         "warnings": warnings,
         "board_brief": board_brief,
@@ -292,11 +312,16 @@ def build_business_analysis(
 def provider_status(settings: Any) -> dict[str, Any]:
     maps_key = bool(getattr(settings, "maps_api_key", ""))
     places_key = bool(getattr(settings, "places_api_key", ""))
+    health = provider_health(settings)
     return {
         "default_mode": getattr(settings, "business_data_mode", "demo"),
         "maps_provider": getattr(settings, "maps_provider", "none"),
         "live_maps_configured": maps_key,
-        "live_places_configured": places_key,
+        "live_places_configured": places_key
+        or getattr(settings, "places_provider", "") in {"osm", "openstreetmap", "osm_nominatim"},
+        "providers": health["providers"],
+        "cache": health["cache"],
+        "last_updated": health["last_updated"],
         "modes": [
             {
                 "mode": "demo",
@@ -321,6 +346,10 @@ def provider_status(settings: Any) -> dict[str, Any]:
             },
         ],
     }
+
+
+def clear_live_data_cache() -> None:
+    _clear_live_data_cache()
 
 
 def build_board_review(
@@ -439,7 +468,22 @@ def _provider_label(payload: BusinessAnalysisRequest, settings: Any | None) -> s
         return DEMO_NOTICE
     if payload.data_mode == "manual":
         return "Manual-data mode"
-    return f"Live-provider mode ({provider})"
+    live_providers = []
+    if settings is not None:
+        live_providers = [
+            str(getattr(settings, name, "none"))
+            for name in (
+                "places_provider",
+                "weather_provider",
+                "news_provider",
+                "currency_provider",
+                "government_data_provider",
+                "demographics_provider",
+            )
+            if str(getattr(settings, name, "none")) not in {"none", "disabled", ""}
+        ]
+    provider_summary = ", ".join(live_providers[:4]) or provider
+    return f"Live-provider mode ({provider_summary})"
 
 
 def _provider_warnings(payload: BusinessAnalysisRequest, settings: Any | None) -> list[str]:
@@ -449,12 +493,14 @@ def _provider_warnings(payload: BusinessAnalysisRequest, settings: Any | None) -
 
     maps_configured = bool(getattr(settings, "maps_api_key", "")) if settings else False
     places_configured = bool(getattr(settings, "places_api_key", "")) if settings else False
+    places_provider = str(getattr(settings, "places_provider", "") if settings else "")
+    public_places = places_provider in {"osm", "openstreetmap", "osm_nominatim"}
     if not maps_configured and not places_configured:
         warnings.append(
-            "No live location provider is configured. Continue with demo mode or add "
-            "information manually."
+            "No keyed live location provider is configured. Public open-data providers may "
+            "still be attempted when enabled."
         )
-    elif not places_configured:
+    elif not places_configured and not public_places:
         warnings.append(
             "Live map credentials are present, but place-search credentials are missing. "
             "Competitor and supplier discovery may be unavailable."
@@ -811,10 +857,13 @@ def _cost_feasibility_points(payload: BusinessAnalysisRequest, profile: dict[str
 def _evidence_points(evidence: list[dict[str, Any]], payload: BusinessAnalysisRequest) -> int:
     user_evidence = [item for item in evidence if item["source_type"].startswith("manual")]
     user_evidence += [item for item in evidence if item["source_type"] == "user_input"]
+    live_evidence = [item for item in evidence if item.get("source_category") == "live_evidence"]
     points = 1
     if len(user_evidence) >= 4:
         points += 2
     elif len(user_evidence) >= 2:
+        points += 1
+    if live_evidence:
         points += 1
     if payload.customer_interviews or payload.customer_observations:
         points += 1
@@ -834,6 +883,13 @@ def _evidence_confidence(
     ):
         return "Low"
     high_or_moderate = [item for item in evidence if item["confidence"] in {"high", "moderate"}]
+    live_or_user = [
+        item
+        for item in high_or_moderate
+        if item.get("source_category") in {"live_evidence", "user_provided_information"}
+    ]
+    if len(live_or_user) >= 8:
+        return "High"
     if len(high_or_moderate) >= 8 and payload.customer_interviews:
         return "High"
     if len(high_or_moderate) >= 4:
@@ -1638,6 +1694,56 @@ def _performance_tracking() -> dict[str, Any]:
     }
 
 
+def _evidence_panel(
+    evidence: list[dict[str, Any]],
+    health: dict[str, Any],
+) -> dict[str, Any]:
+    categories = {
+        "live_evidence": [],
+        "historical_evidence": [],
+        "ai_inference": [],
+        "user_provided_information": [],
+    }
+    for item in evidence:
+        category = str(item.get("source_category") or "ai_inference")
+        if category not in categories:
+            category = "ai_inference"
+        categories[category].append(
+            {
+                "claim": item["claim"],
+                "source_name": item["source_name"],
+                "source_type": item["source_type"],
+                "confidence": item["confidence"],
+                "verification_status": item["verification_status"],
+                "freshness": item["freshness"],
+            }
+        )
+    providers = health.get("providers", []) if isinstance(health, dict) else []
+    unavailable = [
+        provider
+        for provider in providers
+        if isinstance(provider, dict)
+        and provider.get("status") in {"disabled", "error"}
+    ]
+    return {
+        "summary": {
+            "live_evidence": len(categories["live_evidence"]),
+            "historical_evidence": len(categories["historical_evidence"]),
+            "ai_inference": len(categories["ai_inference"]),
+            "user_provided_information": len(categories["user_provided_information"]),
+        },
+        "categories": categories,
+        "provider_health": providers,
+        "unavailable_providers": unavailable,
+        "rules": [
+            "Live evidence is retrieved from configured providers during this run.",
+            "Historical evidence comes from public datasets and may lag current conditions.",
+            "AI inference and configurable benchmarks are not facts.",
+            "User-provided information is trusted as input but should still be verified.",
+        ],
+    }
+
+
 def _board_brief(
     payload: BusinessAnalysisRequest,
     recommendation: dict[str, Any],
@@ -1696,6 +1802,7 @@ def _report(
     daily_sales: dict[str, Any],
     validation_plan: list[dict[str, Any]],
     evidence: list[dict[str, Any]],
+    live_intelligence: dict[str, Any],
     missing_information: list[str],
     performance_tracking: dict[str, Any],
 ) -> dict[str, Any]:
@@ -1737,8 +1844,18 @@ def _report(
         "risk_matrix": _risk_matrix(score, missing_information),
         "evidence_quality": {
             "confidence": score["evidence_confidence"],
+            "panel": _evidence_panel(evidence, live_intelligence["provider_health"]),
             "records": evidence,
             "missing_information": missing_information,
+        },
+        "live_intelligence": {
+            "location_intelligence": live_intelligence["location_intelligence"],
+            "weather_impact": live_intelligence["weather_impact"],
+            "news_intelligence": live_intelligence["news_intelligence"],
+            "currency_cost_indicators": live_intelligence["currency_cost_indicators"],
+            "government_open_data": live_intelligence["government_open_data"],
+            "demographics": live_intelligence["demographics"],
+            "provider_health": live_intelligence["provider_health"],
         },
         "validation_plan": validation_plan,
         "licensing_compliance": _compliance_checklist(payload),
@@ -1928,6 +2045,7 @@ def _evidence(
     freshness: str = "current_session",
     notes: str | None = None,
     tags: list[str] | None = None,
+    source_category: str | None = None,
 ) -> dict[str, Any]:
     return {
         "id": str(uuid4()),
@@ -1935,6 +2053,7 @@ def _evidence(
         "source_name": source_name,
         "source_url": source_url,
         "source_type": source_type,
+        "source_category": source_category or _source_category(source_type, verification_status),
         "retrieval_time": retrieved_at.isoformat(),
         "location": location,
         "value": value,
@@ -1944,6 +2063,16 @@ def _evidence(
         "notes": notes,
         "tags": tags or [],
     }
+
+
+def _source_category(source_type: str, verification_status: str) -> str:
+    if verification_status == "user_provided" or source_type.startswith("manual"):
+        return "user_provided_information"
+    if verification_status in {"live_provider", "provider_verified"}:
+        return "live_evidence"
+    if source_type in {"government_open_data", "demographics", "historical_market_data"}:
+        return "historical_evidence"
+    return "ai_inference"
 
 
 def _origin_value(value: Any, origin: str) -> dict[str, Any]:

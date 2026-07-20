@@ -8,6 +8,10 @@ Milestone 5 extends that intent beyond startup reports into evidence-based busin
 
 Milestone 6 upgrades the boardroom layer itself: meetings now begin from explicit evidence packets, route through dynamic meeting modes, include a permanent Risk Officer devil's advocate, and generate replayable decision artifacts instead of a static report snapshot. Executive Intelligence Engine V2 deepens that layer with silent internal research, staged reasoning, debate trees, confidence propagation, counterfactuals, scenario simulation, cognitive-bias detection, AI reflection, and an append-only decision journal.
 
+Milestone 8 extends the same architecture into an enterprise workspace. Organizations, departments, teams, users, roles, comments, approvals, tasks, calendar events, notifications, templates, knowledge items, analytics, admin diagnostics, and audit events are additive modules around the existing boardroom and business-analysis records.
+
+Milestone 10 is a product-quality pass. It improves the shell with a command palette, notification center, guided help, better loading and empty states, friendly recovery errors, offline awareness, live meeting progress, and a polished enterprise dashboard. It does not introduce a new backend architecture.
+
 ## System Boundaries
 
 ```text
@@ -16,6 +20,7 @@ Founder UI
   -> FastAPI API gateway
   -> Boardroom domain orchestration
   -> Business intelligence domain services
+  -> Enterprise collaboration services
   -> AI provider abstraction
   -> PostgreSQL system of record
   -> Redis event/cache layer
@@ -32,6 +37,7 @@ backend/
     domain/boardroom/     clean domain model and orchestration
     domain/business_intelligence/
                           evidence, location, supplier, finance, and validation services
+    domain/enterprise/    role and permission policy
     infrastructure/       database and provider adapters
     schemas/              request and response DTOs
   alembic/                PostgreSQL migrations
@@ -73,6 +79,8 @@ Application/API responsibilities:
 - call the orchestrator
 - return structured JSON
 - later persist meetings, turns, votes, report sections, and artifacts
+- enforce additive enterprise role checks through explicit permission policy
+- expose organization, approval, task, calendar, notification, template, knowledge, analytics, admin, and audit endpoints
 
 Infrastructure responsibilities:
 
@@ -123,6 +131,23 @@ Secrets are intentionally one-way:
 - The browser and Electron renderer never receive provider key values.
 - Settings displays redacted status only.
 - Production logs avoid request bodies and secret-bearing headers.
+
+## Enterprise Workspace
+
+Enterprise collaboration extends existing records instead of replacing them. Single-user workflows still create and use a seeded `Default Organization` with a `Workspace Owner` administrator. Existing API clients do not need to send organization identifiers.
+
+Enterprise responsibilities:
+
+- maintain organization, department, team, user, and membership records
+- attach board meetings and business analyses to an organization where available
+- apply role permissions for create, edit, export, comment, approve, task management, and administration
+- support report comments, replies, mentions, and resolution
+- support approval workflows with ordered steps
+- support tasks, due dates, board reviews, notifications, knowledge items, and report templates
+- record audit events for material workspace actions
+- expose analytics and executive dashboards from persisted meetings, decisions, approvals, evidence, and audit records
+
+The frontend enterprise view consumes `/api/v1/enterprise/dashboard` and uses the same design primitives as the rest of the product. The command palette and notification center are client-side shell improvements that sit above the unchanged route structure.
 
 ## Desktop Shell
 
@@ -189,6 +214,20 @@ Core tables:
 - `saved_suppliers` - saved/manual suppliers and supplier comparison data
 - `business_validation_tasks` - pre-launch validation tasks and outcomes
 - `business_performance_entries` - actual operating performance for forecast-versus-actual review
+- `enterprise_organizations` - organization workspace roots
+- `enterprise_departments` - departments such as Marketing, Finance, HR, Operations, and Product
+- `enterprise_teams` - teams within departments
+- `enterprise_users` - enterprise user identities
+- `enterprise_memberships` - organization roles and permission snapshots
+- `meeting_collaborators` - shared board meeting participation
+- `report_comments` - report comments, replies, mentions, and resolution state
+- `approval_workflows` and `approval_steps` - ordered approval and sign-off workflows
+- `enterprise_tasks` - recommendation follow-ups and assigned work
+- `calendar_events` - board reviews, deadlines, and related events
+- `enterprise_notifications` - in-app and email-ready notification records
+- `knowledge_items` - reports, lessons, templates, meeting history, and best practices
+- `report_templates` - report templates by category and locale
+- `audit_events` - append-only audit trail for workspace actions
 
 Important relationships:
 
@@ -196,6 +235,8 @@ Important relationships:
 - one `board_meeting` has many `meeting_turns`, `board_votes`, and `final_reports`
 - one `final_report` has many `report_sections`
 - one `business_analysis` has many evidence records, saved suppliers, validation tasks, and performance entries
+- one `enterprise_organization` owns departments, teams, memberships, tasks, calendar events, notifications, knowledge items, templates, and audit events
+- one `board_meeting` can have collaborators, comments, approval workflows, tasks, and audit events
 
 ## API Design
 
@@ -222,6 +263,20 @@ Milestone 1 routes:
 - `GET /api/v1/business-analyses/{id}/export` - export PDF, Markdown, or JSON
 - `POST /api/v1/business-analyses/{id}/performance-entries` - record actual business performance
 - `POST /api/v1/business-analyses/{id}/board-review` - summarize forecast-versus-actual performance
+- `GET /api/v1/organizations` - list enterprise organizations
+- `POST /api/v1/organizations` - create an organization workspace
+- `GET /api/v1/enterprise/dashboard` - enterprise dashboard
+- `GET /api/v1/enterprise/analytics` - enterprise analytics and executive signals
+- `GET /api/v1/enterprise/admin` - admin panel payload
+- `GET /api/v1/enterprise/audit` - audit trail
+- `GET /api/v1/report-templates` - report templates
+- `GET /api/v1/knowledge/search` - knowledge base search
+- `GET /api/v1/tasks`, `POST /api/v1/tasks`, `PATCH /api/v1/tasks/{id}` - tasks
+- `GET /api/v1/calendar` - calendar events
+- `GET /api/v1/notifications` - in-app notifications
+- `POST /api/v1/board-meetings/{id}/collaborators` - shared meeting participation
+- `GET /api/v1/reports/{id}/comments`, `POST /api/v1/reports/{id}/comments`, `PATCH /api/v1/reports/{id}/comments/{comment_id}` - report comments
+- `POST /api/v1/board-meetings/{id}/approvals`, `POST /api/v1/business-analyses/{id}/approvals`, `POST /api/v1/approvals/{workflow_id}/steps/{step_id}/decision` - approval workflows
 
 ## Milestone Roadmap
 

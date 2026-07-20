@@ -176,6 +176,8 @@ class EvidenceRecordResponse(BaseModel):
     source_name: str
     source_url: str | None = None
     source_type: str
+    source_category: str | None = None
+    provider: str | None = None
     retrieval_time: str
     location: dict[str, Any] | None = None
     value: Any = None
@@ -214,6 +216,7 @@ class BusinessAnalysisResponse(BaseModel):
     recommendation: dict[str, Any]
     opportunity_score: dict[str, Any]
     evidence_confidence: str
+    evidence_panel: dict[str, Any] = Field(default_factory=dict)
     evidence: list[EvidenceRecordResponse]
     competitors: list[dict[str, Any]]
     suppliers: list[dict[str, Any]]
@@ -225,6 +228,7 @@ class BusinessAnalysisResponse(BaseModel):
     daily_sales: dict[str, Any]
     validation_plan: list[dict[str, Any]]
     performance_tracking: dict[str, Any]
+    live_intelligence: dict[str, Any] = Field(default_factory=dict)
     missing_information: list[str]
     warnings: list[str]
     board_brief: dict[str, Any]
@@ -236,6 +240,9 @@ class BusinessProviderStatusResponse(BaseModel):
     maps_provider: str
     live_maps_configured: bool
     live_places_configured: bool
+    providers: list[dict[str, Any]] = Field(default_factory=list)
+    cache: dict[str, Any] = Field(default_factory=dict)
+    last_updated: str | None = None
     modes: list[dict[str, Any]]
 
 
