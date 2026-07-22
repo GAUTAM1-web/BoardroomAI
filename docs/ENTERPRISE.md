@@ -34,7 +34,7 @@ Reports support comments, replies, mentions, and resolution. Board meetings supp
 
 ## Governance
 
-The platform records audit events for material actions such as starting meetings, generating reports, creating comments, changing tasks, and approval decisions. Admin diagnostics return redacted provider status and usage counts only; secrets are never returned to the browser or Electron renderer.
+The platform records audit events for material actions such as starting meetings, generating reports, creating comments, changing tasks, approval decisions, exports, and provider retries. Admin diagnostics return redacted provider status, live-data health, cache posture, and usage counts only; secrets are never returned to the browser or Electron renderer.
 
 ## Enterprise Dashboard
 
@@ -46,4 +46,3 @@ The Enterprise tab uses `/api/v1/enterprise/dashboard` and shows:
 - upcoming reviews and deadlines
 - board activity
 - executive decision signals
-

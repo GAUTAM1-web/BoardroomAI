@@ -6,7 +6,7 @@ Milestone 5 expands the product into an evidence-based business decision platfor
 
 Milestone 6 upgrades the board itself into an evidence-first executive intelligence layer with permanent executive personalities, dynamic meeting modes, devil's advocate review, confidence timelines, replayable decisions, and final decision briefs. Executive Intelligence Engine V2 adds silent internal research, a staged reasoning pipeline, debate trees, confidence propagation, counterfactuals, scenario simulation, cognitive-bias detection, AI reflection, and a decision journal.
 
-Milestone 8 adds the enterprise workspace layer: default organizations, departments, teams, users, role permissions, comments, approvals, tasks, calendar events, notifications, knowledge search, templates, analytics, admin diagnostics, and audit logging. Milestone 10 polishes the product shell with a command palette, notification center, richer loading/empty/error states, offline awareness, a help center, and a clearer live-meeting progress experience.
+Milestone 8 adds the enterprise workspace layer: default organizations, departments, teams, users, role permissions, comments, approvals, tasks, calendar events, notifications, knowledge search, templates, analytics, admin diagnostics, and audit logging. Milestone 10 polishes the product shell with a command palette, notification center, richer loading/empty/error states, offline awareness, a help center, and a clearer live-meeting progress experience. Milestone 11 adds a real-world intelligence layer with optional maps, places, weather, news, currency, government/open-data, and demographics providers.
 
 ## Current Capabilities
 
@@ -28,6 +28,7 @@ Milestone 8 adds the enterprise workspace layer: default organizations, departme
 - Evidence-based "Decide" workspace for local shops, service businesses, existing businesses, candidate properties, and startup concepts.
 - Optional location flow with manual entry, current-location permission only after user action, map-pin coordinate support, and no background tracking.
 - Manual/demo/live provider modes for competitors, suppliers, locations, and evidence. Demo mode is labeled `Demo data - not live local evidence`.
+- Live business analyses can enrich recommendations with provider-sourced location context, recent news, weather impact, exchange-rate indicators, government/open-data records, demographics, source categories, cache status, and provider health.
 - Explainable Opportunity Score, supplier/procurement plan, opening inventory, editable finance assumptions, daily-sales targets, validation plan, and board-ready brief.
 - Business analysis history, evidence records, saved suppliers, validation tasks, performance entries, and weekly board-review scaffolding.
 - Dockerized FastAPI, Next.js, PostgreSQL, Redis, and Qdrant stack.
@@ -104,18 +105,30 @@ The business-intelligence workflow supports three data modes:
 
 - `demo`: uses labeled benchmark scaffolding only and returns `Demo data - not live local evidence`.
 - `manual`: uses competitors, suppliers, quotations, observations, locations, and costs entered by the user.
-- `live`: reserved for configured provider credentials; if credentials are missing, the API returns actionable warnings instead of fake listings.
+- `live`: attempts enabled public and configured providers; unavailable sources return actionable warnings instead of fake listings.
 
 Environment variables:
 
 ```text
 BUSINESS_DATA_MODE=demo
-MAPS_PROVIDER=none
+MAPS_PROVIDER=osm_nominatim
+PLACES_PROVIDER=osm_nominatim
+WEATHER_PROVIDER=open_meteo
+NEWS_PROVIDER=gdelt_doc
+CURRENCY_PROVIDER=frankfurter
+GOVERNMENT_DATA_PROVIDER=world_bank
+DEMOGRAPHICS_PROVIDER=world_bank
 MAPS_API_KEY=
 PLACES_API_KEY=
+GDELT_API_KEY=
+LIVE_DATA_CACHE_TTL_SECONDS=900
+LIVE_DATA_TIMEOUT_SECONDS=2.5
+CURRENCY_BASE=USD
+CURRENCY_QUOTES=EUR,GBP,INR
+PROVIDER_USER_AGENT=BoardroomAI/1.0-local-development
 ```
 
-Provider secrets stay on the backend. The frontend never needs map or place-search API keys.
+Provider secrets stay on the backend. The frontend never needs map, place-search, news, or currency API keys. Public providers are optional and can be disabled by setting their provider variable to `none`.
 
 ## Usage
 
@@ -154,6 +167,7 @@ Provider secrets stay on the backend. The frontend never needs map or place-sear
 - `GET /api/v1/notifications`
 - `GET /api/v1/search?q=...`
 - `GET /api/v1/business-data/providers`
+- `POST /api/v1/business-data/providers/retry`
 - `POST /api/v1/business-analyses`
 - `GET /api/v1/business-analyses`
 - `GET /api/v1/business-analyses/{analysis_id}`
@@ -267,7 +281,7 @@ Desktop release metadata:
 
 The current AI provider is deterministic by design. It gives repeatable tests and a fully functional offline development flow while preserving the provider abstraction for OpenAI, Claude, Gemini, Ollama, or other model-backed providers.
 
-Business intelligence follows the same offline-first rule. Demo mode is clearly labeled, manual mode uses user-entered evidence, and live-provider mode requires backend environment credentials. No provider API keys are exposed in frontend code.
+Business intelligence follows the same offline-first rule. Demo mode is clearly labeled, manual mode uses user-entered evidence, and live-provider mode uses optional backend providers with smart caching, health reporting, retry, and graceful degradation. No provider API keys are exposed in frontend code.
 
 PostgreSQL remains the system of record for meeting modes, meetings, votes, confidence events, timeline turns, report sections, favorites, business analyses, evidence records, suppliers, validation tasks, performance entries, enterprise workspace records, collaboration artifacts, audit events, and exportable artifacts. Docker Compose remains the default development workflow.
 

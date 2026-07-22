@@ -19,6 +19,17 @@ const DEFAULT_WS_BASE_URL = "ws://localhost:8000";
 
 const API_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_API_BASE_URL);
 
+class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly statusText: string
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 function normalizeBaseUrl(value: string | undefined) {
   const trimmed = value?.trim() ?? "";
   return trimmed.replace(/\/+$/, "");
@@ -45,8 +56,10 @@ async function requestJson<T>(
   }
 
   if (!response.ok) {
-    throw new Error(
-      `${context}: ${response.status} ${response.statusText}${await errorDetail(response)}`
+    throw new ApiError(
+      `${context}: ${response.status} ${response.statusText}${await errorDetail(response)}`,
+      response.status,
+      response.statusText
     );
   }
 
@@ -70,8 +83,10 @@ async function requestNoContent(
   }
 
   if (!response.ok) {
-    throw new Error(
-      `${context}: ${response.status} ${response.statusText}${await errorDetail(response)}`
+    throw new ApiError(
+      `${context}: ${response.status} ${response.statusText}${await errorDetail(response)}`,
+      response.status,
+      response.statusText
     );
   }
 }
@@ -92,6 +107,10 @@ async function errorDetail(response: Response) {
   }
 
   return ` - ${text}`;
+}
+
+function isApiStatus(error: unknown, status: number) {
+  return error instanceof ApiError && error.status === status;
 }
 
 export async function createBoardMeeting(payload: StartupBriefPayload): Promise<BoardMeetingResult> {
@@ -136,13 +155,20 @@ export async function fetchDashboard(): Promise<DashboardSnapshot> {
 }
 
 export async function fetchEnterpriseDashboard(): Promise<EnterpriseDashboard> {
-  return requestJson<EnterpriseDashboard>(
-    `${API_PREFIX}/enterprise/dashboard`,
-    {
-      cache: "no-store"
-    },
-    "Enterprise workspace failed to load"
-  );
+  try {
+    return await requestJson<EnterpriseDashboard>(
+      `${API_PREFIX}/enterprise/dashboard`,
+      {
+        cache: "no-store"
+      },
+      "Enterprise workspace failed to load"
+    );
+  } catch (error) {
+    if (isApiStatus(error, 404)) {
+      return fetchEnterpriseDashboardFallback();
+    }
+    throw error;
+  }
 }
 
 export async function fetchMeetings(options?: {
@@ -169,6 +195,85 @@ export async function fetchMeetings(options?: {
     "Meeting history failed to load"
   );
   return data.meetings;
+}
+
+async function fetchEnterpriseDashboardFallback(): Promise<EnterpriseDashboard> {
+  const [dashboard, meetings] = await Promise.all([
+    fetchDashboard(),
+    fetchMeetings({ limit: 40 })
+  ]);
+  const now = new Date().toISOString();
+  const completedMeetings = meetings.filter((meeting) => meeting.status === "completed").length;
+  const recentMeetings = dashboard.recent_meetings.length ? dashboard.recent_meetings : meetings.slice(0, 8);
+
+  return {
+    organization: {
+      id: "legacy-default-organization",
+      name: "Default Organization",
+      slug: "default",
+      status: "compatibility",
+      default_locale: "en",
+      created_at: now
+    },
+    departments: ["Marketing", "Finance", "HR", "Operations", "Product"].map((name) => ({
+      id: `legacy-${name.toLowerCase()}`,
+      name,
+      status: "active"
+    })),
+    teams: [
+      ["Executive Team", "Operations"],
+      ["Finance Review", "Finance"],
+      ["Product Council", "Product"],
+      ["Marketing Strategy", "Marketing"],
+      ["People Operations", "HR"]
+    ].map(([name, department]) => ({
+      id: `legacy-${name.toLowerCase().replace(/\s+/g, "-")}`,
+      name,
+      department,
+      status: "active"
+    })),
+    users: [
+      {
+        id: "legacy-owner",
+        display_name: "Workspace Owner",
+        email: "owner@boardroom.local",
+        role: "Administrator",
+        status: "active"
+      }
+    ],
+    recent_meetings: recentMeetings,
+    pending_approvals: [],
+    tasks: [],
+    board_activity: recentMeetings.slice(0, 8).map((meeting, index) => ({
+      id: `legacy-activity-${meeting.meeting_id}-${index}`,
+      action: "meeting.available",
+      entity_type: "board_meeting",
+      entity_id: meeting.meeting_id,
+      created_at: meeting.completed_at ?? meeting.created_at ?? now
+    })),
+    upcoming_reviews: [],
+    analytics: {
+      meetings: {
+        total: dashboard.total_meetings,
+        completed: completedMeetings || dashboard.reports_generated
+      },
+      decisions: {
+        approval_rate: dashboard.approval_rate,
+        average_confidence: dashboard.average_confidence
+      },
+      approval_time_hours: 0,
+      success_rate: dashboard.approval_rate,
+      evidence_quality: {
+        source: "legacy_dashboard_fallback"
+      }
+    },
+    executive_dashboard: {
+      acceptance_rate: dashboard.approval_rate,
+      confidence_trend: dashboard.average_confidence,
+      replay_frequency: 0,
+      recommendation_outcomes: dashboard.recent_board_decisions
+    }
+  };
 }
 
 export async function fetchMeetingDetail(meetingId: string): Promise<BoardMeetingDetail> {
@@ -223,6 +328,17 @@ export async function fetchBusinessProviderStatus(): Promise<BusinessProviderSta
       cache: "no-store"
     },
     "Business data provider status failed to load"
+  );
+}
+
+export async function retryBusinessProviders(): Promise<BusinessProviderStatus> {
+  return requestJson<BusinessProviderStatus>(
+    `${API_PREFIX}/business-data/providers/retry`,
+    {
+      method: "POST",
+      cache: "no-store"
+    },
+    "Business data provider retry failed"
   );
 }
 

@@ -578,6 +578,7 @@ def _unavailable(message: str) -> dict[str, Any]:
         "warnings": [message],
         "evidence": [],
         "competitors": [],
+        "suppliers": [],
         "location_intelligence": {},
         "weather_impact": {},
         "news_intelligence": {},

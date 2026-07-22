@@ -3,12 +3,16 @@
 import {
   AlertTriangle,
   BriefcaseBusiness,
+  Building2,
   Calculator,
+  CloudSun,
+  Database,
   Download,
   FileJson,
   FileText,
   LocateFixed,
   MapPin,
+  Newspaper,
   Play,
   RefreshCcw,
   Search,
@@ -16,16 +20,19 @@ import {
   ShoppingCart,
   Store,
   Target,
-  TrendingUp
+  TrendingUp,
+  Wifi,
+  type LucideIcon
 } from "lucide-react";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   analyzeBusiness,
   businessAnalysisExportUrl,
   fetchBusinessAnalyses,
   fetchBusinessAnalysisDetail,
-  fetchBusinessProviderStatus
+  fetchBusinessProviderStatus,
+  retryBusinessProviders
 } from "@/lib/api";
 import type {
   BusinessAnalysisPayload,
@@ -181,6 +188,26 @@ export function BusinessDecisionWorkspace({
 
   const payload = useMemo(() => businessFormToPayload(form), [form]);
 
+  const refreshProviderStatus = useCallback(async () => {
+    try {
+      setProviderStatus(await fetchBusinessProviderStatus());
+      setError(null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Provider status failed to load");
+    }
+  }, []);
+
+  async function handleRetryProviders() {
+    try {
+      setProviderStatus(await retryBusinessProviders());
+      setError(null);
+    } catch (retryError) {
+      setError(
+        retryError instanceof Error ? retryError.message : "Provider retry failed"
+      );
+    }
+  }
+
   async function refreshHistory() {
     setLoadingHistory(true);
     try {
@@ -199,12 +226,8 @@ export function BusinessDecisionWorkspace({
 
   useEffect(() => {
     void refreshHistory();
-    void fetchBusinessProviderStatus()
-      .then(setProviderStatus)
-      .catch((loadError) => {
-        setError(loadError instanceof Error ? loadError.message : "Provider status failed to load");
-      });
-  }, []);
+    void refreshProviderStatus();
+  }, [refreshProviderStatus]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -491,11 +514,7 @@ export function BusinessDecisionWorkspace({
             ))}
           </div>
           {providerStatus ? (
-            <p className="mt-3 text-sm leading-6 text-board-muted">
-              Provider: {providerStatus.maps_provider}. Live maps configured:{" "}
-              {providerStatus.live_maps_configured ? "yes" : "no"}. Live places configured:{" "}
-              {providerStatus.live_places_configured ? "yes" : "no"}.
-            </p>
+            <ProviderStatusStrip status={providerStatus} onRetry={() => void handleRetryProviders()} />
           ) : null}
           {form.data_mode === "demo" ? (
             <div className="mt-3 rounded-md border border-board-amber/30 bg-board-amber/10 p-3 text-sm text-board-amber">
@@ -654,6 +673,11 @@ function DecisionBrief({
   const inventory = Array.isArray(result.procurement_plan.opening_inventory)
     ? result.procurement_plan.opening_inventory
     : [];
+  const evidencePanel = asRecord(result.evidence_panel);
+  const evidenceSummary = asRecord(evidencePanel.summary);
+  const evidenceCategories = asRecord(evidencePanel.categories);
+  const providerHealth = arrayRecords(evidencePanel.provider_health);
+  const liveSections = liveIntelligenceSections(asRecord(result.live_intelligence));
 
   return (
     <div className="space-y-4">
@@ -701,6 +725,44 @@ function DecisionBrief({
         ) : null}
       </DecisionPanel>
 
+      <DecisionPanel icon={Database} title="Evidence panel" subtitle="Source categories for recommendation claims">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Metric label="Live evidence" value={String(categoryCount(evidenceSummary, "live_evidence"))} />
+          <Metric
+            label="Historical"
+            value={String(categoryCount(evidenceSummary, "historical_evidence"))}
+          />
+          <Metric
+            label="User-provided"
+            value={String(categoryCount(evidenceSummary, "user_provided_information"))}
+          />
+          <Metric label="AI inference" value={String(categoryCount(evidenceSummary, "ai_inference"))} />
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <EvidenceCategoryPreview
+            title="Live evidence"
+            items={arrayRecords(evidenceCategories.live_evidence)}
+            tone="teal"
+          />
+          <EvidenceCategoryPreview
+            title="Historical evidence"
+            items={arrayRecords(evidenceCategories.historical_evidence)}
+          />
+          <EvidenceCategoryPreview
+            title="User-provided information"
+            items={arrayRecords(evidenceCategories.user_provided_information)}
+          />
+          <EvidenceCategoryPreview
+            title="AI inference"
+            items={arrayRecords(evidenceCategories.ai_inference)}
+            tone="amber"
+          />
+        </div>
+        {providerHealth.length ? (
+          <ProviderHealthList providers={providerHealth} />
+        ) : null}
+      </DecisionPanel>
+
       <DecisionPanel icon={Target} title="Reasons, risks, and missing evidence" subtitle="What supports the recommendation">
         <ThreeColumnList
           firstTitle="Top reasons"
@@ -712,7 +774,7 @@ function DecisionBrief({
         />
       </DecisionPanel>
 
-      <DecisionPanel icon={Store} title="Competitors and suppliers" subtitle="Manual or configured-provider evidence only">
+      <DecisionPanel icon={Store} title="Competitors and suppliers" subtitle="Manual and live provider evidence">
         <div className="grid gap-3 md:grid-cols-2">
           <ResultList
             title="Competitors"
@@ -730,6 +792,16 @@ function DecisionBrief({
           />
         </div>
       </DecisionPanel>
+
+      {liveSections.length ? (
+        <DecisionPanel icon={Wifi} title="Real-world intelligence" subtitle="Provider-returned signals for this analysis">
+          <div className="grid gap-3 md:grid-cols-2">
+            {liveSections.map((section) => (
+              <LiveIntelligenceCard key={section.title} section={section} />
+            ))}
+          </div>
+        </DecisionPanel>
+      ) : null}
 
       <DecisionPanel icon={Calculator} title="Daily sales and break-even" subtitle="Editable assumptions, transparent origin labels">
         <div className="grid gap-3 sm:grid-cols-3">
@@ -949,7 +1021,7 @@ function DecisionPanel({
   subtitle,
   children
 }: {
-  icon: typeof BriefcaseBusiness;
+  icon: LucideIcon;
   title: string;
   subtitle: string;
   children: ReactNode;
@@ -1026,6 +1098,40 @@ function NumberField({
   );
 }
 
+function ProviderStatusStrip({
+  status,
+  onRetry
+}: {
+  status: BusinessProviderStatus;
+  onRetry: () => void;
+}) {
+  const providers = status.providers ?? [];
+  const ready = providers.filter((provider) => provider.status === "ready" || provider.status === "ok").length;
+  const unavailable = providers.filter((provider) => provider.status === "disabled" || provider.status === "error").length;
+
+  return (
+    <div className="mt-3 rounded-md border border-white/10 bg-white/[0.035] p-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap gap-2">
+            <SmallBadge tone="teal">{ready} ready</SmallBadge>
+            {unavailable ? <SmallBadge tone="amber">{unavailable} unavailable</SmallBadge> : null}
+            <SmallBadge>Cache {String(asRecord(status.cache).entries ?? 0)}</SmallBadge>
+          </div>
+          <p className="mt-2 break-words text-sm leading-6 text-board-muted">
+            Maps: {status.maps_provider}. Places:{" "}
+            {status.live_places_configured ? "configured" : "not configured"}.
+          </p>
+        </div>
+        <Button type="button" variant="quiet" size="sm" onClick={onRetry}>
+          <RefreshCcw className="h-4 w-4" />
+          Retry
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function MapSelectionPreview({ configured }: { configured: boolean }) {
   return (
     <div className="rounded-md border border-white/10 bg-white/[0.035] p-3">
@@ -1083,6 +1189,123 @@ function ScoreBadge({ score }: { score: number }) {
     <span className="shrink-0 rounded-md border border-board-teal/30 bg-board-teal/10 px-2 py-1 text-sm font-semibold text-board-teal">
       {score}/100
     </span>
+  );
+}
+
+function EvidenceCategoryPreview({
+  title,
+  items,
+  tone = "muted"
+}: {
+  title: string;
+  items: Array<Record<string, unknown>>;
+  tone?: "muted" | "teal" | "amber";
+}) {
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.035] p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="break-words text-sm font-semibold text-white">{title}</div>
+        <SmallBadge tone={tone}>{items.length}</SmallBadge>
+      </div>
+      <div className="mt-3 space-y-2">
+        {items.length ? (
+          items.slice(0, 3).map((item, index) => (
+            <div
+              key={`${String(item.claim)}-${index}`}
+              className="border-b border-white/10 pb-2 last:border-0 last:pb-0"
+            >
+              <div className="break-words text-sm leading-5 text-board-mist">
+                {String(item.claim)}
+              </div>
+              <div className="mt-1 flex flex-wrap gap-2">
+                <SmallBadge>{String(item.source_name ?? "Unknown source")}</SmallBadge>
+                <SmallBadge>{String(item.confidence ?? "unknown")}</SmallBadge>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="text-sm text-board-muted">No claims in this category.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProviderHealthList({ providers }: { providers: Array<Record<string, unknown>> }) {
+  return (
+    <div className="mt-4 rounded-md border border-white/10 bg-white/[0.035] p-3">
+      <div className="mb-3 text-sm font-semibold text-white">Provider health</div>
+      <div className="grid gap-2">
+        {providers.map((provider) => {
+          const status = String(provider.status ?? "unknown");
+          return (
+            <div
+              key={`${String(provider.type)}-${String(provider.name)}`}
+              className="flex flex-col gap-2 rounded-md border border-white/10 bg-white/[0.025] p-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0">
+                <div className="break-words text-sm font-medium text-white">
+                  {titleCase(String(provider.type ?? "provider"))}
+                </div>
+                <div className="mt-1 break-words text-xs text-board-muted">
+                  {String(provider.name ?? "unknown")} -{" "}
+                  {provider.last_sync ? formatDateTime(provider.last_sync) : "never synced"}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <SmallBadge tone={providerTone(status)}>{titleCase(status)}</SmallBadge>
+                {provider.latency_ms != null ? (
+                  <SmallBadge>{String(provider.latency_ms)} ms</SmallBadge>
+                ) : null}
+                {provider.cache_hit ? <SmallBadge tone="teal">cache hit</SmallBadge> : null}
+              </div>
+              {provider.error ? (
+                <div className="break-words text-xs text-board-amber">
+                  {String(provider.error)}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+type LiveIntelligenceSection = {
+  title: string;
+  icon: LucideIcon;
+  record: Record<string, unknown>;
+  highlights: string[];
+};
+
+function LiveIntelligenceCard({ section }: { section: LiveIntelligenceSection }) {
+  const Icon = section.icon;
+  const source = String(section.record.source ?? section.record.provider ?? "Provider");
+
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.035] p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="break-words text-sm font-semibold text-white">{section.title}</div>
+          <div className="mt-1 break-words text-xs text-board-muted">{source}</div>
+        </div>
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-board-teal">
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+      <div className="mt-3 space-y-2">
+        {section.highlights.length ? (
+          section.highlights.slice(0, 5).map((highlight) => (
+            <div key={highlight} className="break-words text-sm leading-5 text-board-mist">
+              {highlight}
+            </div>
+          ))
+        ) : (
+          <div className="text-sm text-board-muted">No usable provider signals returned.</div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1195,6 +1418,177 @@ function SmallBadge({
       {children}
     </span>
   );
+}
+
+function liveIntelligenceSections(live: Record<string, unknown>): LiveIntelligenceSection[] {
+  const location = asRecord(live.location_intelligence);
+  const weather = asRecord(live.weather_impact);
+  const news = asRecord(live.news_intelligence);
+  const currency = asRecord(live.currency_cost_indicators);
+  const openData = asRecord(live.government_open_data);
+  const demographics = asRecord(live.demographics);
+  const sections: LiveIntelligenceSection[] = [];
+
+  if (hasRecordContent(location)) {
+    sections.push({
+      title: "Location intelligence",
+      icon: Building2,
+      record: location,
+      highlights: [
+        countLine("Competitor candidates", location.nearby_competitor_candidates),
+        countLine("Complementary businesses", location.complementary_businesses),
+        countLine("Parking records", location.parking),
+        countLine("Public transport records", location.public_transport),
+        countLine("Schools, offices, hospitals", location.schools_offices_hospitals)
+      ]
+    });
+  }
+
+  if (hasRecordContent(weather)) {
+    sections.push({
+      title: "Weather impact",
+      icon: CloudSun,
+      record: weather,
+      highlights: [
+        `Weather sensitive: ${weather.weather_sensitive ? "yes" : "no"}`,
+        valueLine("Forecast days", weather.forecast_days),
+        valueLine("Average max temperature", weather.average_max_temperature),
+        valueLine("Highest rain probability", weather.highest_rain_probability),
+        ...stringArray(weather.operational_considerations)
+      ]
+    });
+  }
+
+  if (hasRecordContent(news)) {
+    sections.push({
+      title: "News intelligence",
+      icon: Newspaper,
+      record: news,
+      highlights: [
+        countLine("Recent articles", news.articles),
+        ...stringArray(news.impact_summary),
+        ...arrayRecords(news.articles).map((article) =>
+          String(article.title ?? article.domain ?? "News item")
+        )
+      ]
+    });
+  }
+
+  if (hasRecordContent(currency)) {
+    sections.push({
+      title: "Currency and cost indicators",
+      icon: Calculator,
+      record: currency,
+      highlights: [
+        valueLine("Base", currency.base),
+        countLine("Exchange rates", currency.rates),
+        ...arrayRecords(currency.rates).map((rate) =>
+          `${String(rate.quote ?? "quote")}: ${String(rate.rate ?? "unknown")}`
+        )
+      ]
+    });
+  }
+
+  if (hasRecordContent(openData)) {
+    sections.push({
+      title: "Government open data",
+      icon: Database,
+      record: openData,
+      highlights: [
+        valueLine("Country code", openData.country_code),
+        ...indicatorLines(openData.records)
+      ]
+    });
+  }
+
+  if (hasRecordContent(demographics)) {
+    sections.push({
+      title: "Demographics",
+      icon: Target,
+      record: demographics,
+      highlights: [
+        valueLine("Country code", demographics.country_code),
+        ...indicatorLines(demographics.records)
+      ]
+    });
+  }
+
+  return sections.map((section) => ({
+    ...section,
+    highlights: section.highlights.filter((item) => item.trim().length > 0)
+  }));
+}
+
+function categoryCount(summary: Record<string, unknown>, key: string) {
+  const value = summary[key];
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function arrayRecords(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map(asRecord).filter(hasRecordContent);
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return typeof value === "string" ? [value] : [];
+  }
+  return value.map(String).filter(Boolean);
+}
+
+function countLine(label: string, value: unknown) {
+  return `${label}: ${Array.isArray(value) ? value.length : 0}`;
+}
+
+function valueLine(label: string, value: unknown) {
+  if (value == null || value === "") {
+    return "";
+  }
+  return `${label}: ${String(value)}`;
+}
+
+function indicatorLines(value: unknown) {
+  return arrayRecords(value).map((record) => {
+    const name = String(record.indicator ?? record.indicator_id ?? "Indicator");
+    const date = record.date ? ` (${String(record.date)})` : "";
+    return `${name}: ${String(record.value ?? "unknown")}${date}`;
+  });
+}
+
+function providerTone(status: string): "muted" | "teal" | "amber" {
+  if (status === "ok" || status === "ready") {
+    return "teal";
+  }
+  if (status === "disabled" || status === "error") {
+    return "amber";
+  }
+  return "muted";
+}
+
+function formatDateTime(value: unknown) {
+  if (typeof value !== "string" || !value) {
+    return "never synced";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(parsed);
+}
+
+function hasRecordContent(value: Record<string, unknown>) {
+  return Object.keys(value).length > 0;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

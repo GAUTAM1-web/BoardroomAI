@@ -12,6 +12,8 @@ Milestone 8 extends the same architecture into an enterprise workspace. Organiza
 
 Milestone 10 is a product-quality pass. It improves the shell with a command palette, notification center, guided help, better loading and empty states, friendly recovery errors, offline awareness, live meeting progress, and a polished enterprise dashboard. It does not introduce a new backend architecture.
 
+Milestone 11 extends the business-intelligence domain with optional real-world providers. Maps, places, weather, news, currency, government/open-data, and demographics adapters add evidence when available, record provider health, use short-lived caching, and degrade with warnings instead of blocking the base analysis.
+
 ## System Boundaries
 
 ```text
@@ -20,6 +22,7 @@ Founder UI
   -> FastAPI API gateway
   -> Boardroom domain orchestration
   -> Business intelligence domain services
+  -> Optional real-world data providers
   -> Enterprise collaboration services
   -> AI provider abstraction
   -> PostgreSQL system of record
@@ -71,6 +74,8 @@ Domain responsibilities:
 - produce local-business decision briefs from evidence, user inputs, and labeled assumptions
 - calculate Opportunity Score, procurement needs, setup cost, daily-sales targets, and validation tasks
 - distinguish verified facts, user-provided information, configurable benchmarks, assumptions, unknowns, and demo-only scaffolding
+- enrich live-mode business analyses with provider-sourced location, weather, news, currency, government/open-data, and demographics evidence
+- expose evidence panels that separate live evidence, historical evidence, AI inference, and user-provided information
 
 Application/API responsibilities:
 
@@ -89,6 +94,7 @@ Infrastructure responsibilities:
 - Redis-backed event streaming and job coordination
 - Qdrant strategic memory
 - AI provider adapters
+- live data provider adapters, in-memory response cache, and provider health state
 - structured production logging
 - Windows desktop packaging and local frontend server startup
 
@@ -118,12 +124,15 @@ Business-data provider routing:
 
 - `demo` mode for labeled benchmark scaffolding; it must never be shown as live evidence
 - `manual` mode for user-entered competitors, suppliers, quotations, observations, costs, and properties
-- `live` mode for future map/place/search providers through backend-only credentials
-- provider failures return actionable warnings and do not block manual analysis
+- `live` mode for enabled public or configured providers through backend-only settings
+- maps and places can use public OpenStreetMap/Nominatim when selected
+- weather uses Open-Meteo, news uses GDELT DOC, currency uses Frankfurter, and government/open-data plus demographics use World Bank indicators by default
+- provider responses are cached for `LIVE_DATA_CACHE_TTL_SECONDS`
+- provider failures return actionable warnings, are visible in provider health, and do not block manual analysis
 
 ## Settings Workspace
 
-The Settings workspace is a frontend configuration surface. It shows backend provider status through the existing `/api/v1/business-data/providers` endpoint, stores non-secret theme and export preferences locally, and displays client diagnostics such as public API routing and WebSocket base configuration.
+The Settings workspace is a frontend configuration surface. It shows backend provider status through `/api/v1/business-data/providers`, can clear live-data cache through `/api/v1/business-data/providers/retry`, stores non-secret theme and export preferences locally, and displays client diagnostics such as public API routing and WebSocket base configuration.
 
 Secrets are intentionally one-way:
 
@@ -257,6 +266,7 @@ Milestone 1 routes:
 - `GET /api/v1/search` - global search across meetings, reports, and executives
 - `GET /api/v1/reports/{id}/export` - export PDF, Markdown, or JSON
 - `GET /api/v1/business-data/providers` - business data/provider status
+- `POST /api/v1/business-data/providers/retry` - clear provider cache and refresh status
 - `POST /api/v1/business-analyses` - create an evidence-based decision brief
 - `GET /api/v1/business-analyses` - list saved decision briefs
 - `GET /api/v1/business-analyses/{id}` - read a decision brief

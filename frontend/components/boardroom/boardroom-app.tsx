@@ -69,6 +69,7 @@ import {
   fetchMeetings,
   generateStartupIdeas,
   reportExportUrl,
+  retryBusinessProviders,
   searchEverything,
   updateMeetingFavorite
 } from "@/lib/api";
@@ -366,6 +367,29 @@ export function BoardroomApp() {
       setLoadingProviderStatus(false);
     }
   }, []);
+
+  const retryProviderStatus = useCallback(async () => {
+    setLoadingProviderStatus(true);
+    try {
+      setProviderStatus(await retryBusinessProviders());
+      setSettingsError(null);
+      notify({
+        tone: "success",
+        title: "Provider retry started",
+        body: "Provider cache was cleared and diagnostics were refreshed."
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Provider retry failed";
+      setSettingsError(message);
+      notify({
+        tone: "warning",
+        title: "Provider retry failed",
+        body: message
+      });
+    } finally {
+      setLoadingProviderStatus(false);
+    }
+  }, [notify]);
 
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true);
@@ -844,6 +868,7 @@ export function BoardroomApp() {
               exportDefault={exportDefault}
               setExportDefault={setExportDefault}
               onRefresh={refreshProviderStatus}
+              onRetryProviders={retryProviderStatus}
             />
           ) : null}
 
@@ -1588,7 +1613,8 @@ function SettingsView({
   setThemePreference,
   exportDefault,
   setExportDefault,
-  onRefresh
+  onRefresh,
+  onRetryProviders
 }: {
   providerStatus: BusinessProviderStatus | null;
   loadingProviderStatus: boolean;
@@ -1598,6 +1624,7 @@ function SettingsView({
   exportDefault: ExportFormat;
   setExportDefault: (value: ExportFormat) => void;
   onRefresh: () => void;
+  onRetryProviders: () => void;
 }) {
   const apiBaseLabel = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "Next.js proxy";
   const websocketLabel = process.env.NEXT_PUBLIC_WS_BASE_URL?.trim() || "Auto-detected backend";
@@ -1605,6 +1632,10 @@ function SettingsView({
   const supportedModes = providerStatus?.modes
     .map((mode) => String(mode.name ?? mode.mode ?? mode.label ?? ""))
     .filter(Boolean);
+  const providerRows = providerStatus?.providers ?? [];
+  const cacheEntries = getNumber(providerStatus?.cache, "entries");
+  const cacheTtl = getNumber(providerStatus?.cache, "ttl_seconds");
+  const providerErrors = providerRows.filter((provider) => provider.status === "error").length;
 
   return (
     <div className="space-y-4">
@@ -1617,14 +1648,20 @@ function SettingsView({
           <h2 className="mt-3 break-words text-2xl font-semibold text-white">{APP_NAME} Settings</h2>
           <p className="mt-1 text-sm text-board-muted">Desktop-ready configuration and diagnostics</p>
         </div>
-        <Button type="button" variant="quiet" onClick={onRefresh} disabled={loadingProviderStatus}>
-          {loadingProviderStatus ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RotateCcw className="h-4 w-4" />
-          )}
-          Refresh
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="quiet" onClick={onRefresh} disabled={loadingProviderStatus}>
+            {loadingProviderStatus ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RotateCcw className="h-4 w-4" />
+            )}
+            Refresh
+          </Button>
+          <Button type="button" variant="quiet" onClick={onRetryProviders} disabled={loadingProviderStatus}>
+            <Activity className="h-4 w-4" />
+            Retry providers
+          </Button>
+        </div>
       </section>
 
       {settingsError ? (
@@ -1667,6 +1704,30 @@ function SettingsView({
             label="Supported modes"
             value={supportedModes?.length ? supportedModes.map(titleCase).join(", ") : "Demo, Manual, Live"}
           />
+        </Panel>
+
+        <Panel icon={Activity} title="Provider Health" subtitle="Live data diagnostics">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <SettingsMetric
+              icon={Database}
+              label="Cache"
+              value={String(cacheEntries)}
+              detail={cacheTtl ? `${cacheTtl}s TTL` : "not configured"}
+            />
+            <SettingsMetric
+              icon={CircleAlert}
+              label="Errors"
+              value={String(providerErrors)}
+              detail="current runtime"
+            />
+            <SettingsMetric
+              icon={Activity}
+              label="Checked"
+              value={formatDateTime(providerStatus?.last_updated)}
+              detail="provider status"
+            />
+          </div>
+          <ProviderDiagnostics providers={providerRows} />
         </Panel>
 
         <Panel icon={KeyRound} title="API Keys" subtitle="Secret posture">
@@ -1857,6 +1918,57 @@ function SettingsRow({ label, value }: { label: string; value: string }) {
     <div className="mt-3 flex flex-col gap-1 border-t border-white/10 pt-3 sm:flex-row sm:items-center sm:justify-between">
       <span className="text-sm text-board-muted">{label}</span>
       <span className="break-words text-sm font-medium text-board-mist sm:text-right">{value}</span>
+    </div>
+  );
+}
+
+function ProviderDiagnostics({ providers }: { providers: BusinessProviderStatus["providers"] }) {
+  if (!providers.length) {
+    return (
+      <div className="mt-4 rounded-md border border-dashed border-white/10 bg-white/[0.02] p-3 text-sm text-board-muted">
+        Provider runtime has not reported connector health yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 space-y-2">
+      {providers.map((provider) => (
+        <div
+          key={`${provider.type}-${provider.name}`}
+          className="rounded-md border border-white/10 bg-white/[0.035] p-3"
+        >
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <div className="break-words text-sm font-semibold text-white">
+                {titleCase(provider.type)}
+              </div>
+              <div className="mt-1 break-words text-xs text-board-muted">
+                {provider.name} - {provider.configured ? "configured" : "disabled"}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone={providerStatusTone(provider.status)}>{titleCase(provider.status)}</Badge>
+              {provider.cache_hit ? <Badge tone="teal">Cache hit</Badge> : null}
+              {provider.latency_ms != null ? <Badge>{provider.latency_ms} ms</Badge> : null}
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <StatPill label="Last sync" value={formatDateTime(provider.last_sync)} />
+            <StatPill
+              label="Cache TTL"
+              value={
+                provider.cache_ttl_seconds == null ? "Default" : `${provider.cache_ttl_seconds}s`
+              }
+            />
+          </div>
+          {provider.error ? (
+            <div className="mt-3 break-words rounded-md border border-board-amber/30 bg-board-amber/10 p-2 text-xs leading-5 text-board-amber">
+              {provider.error}
+            </div>
+          ) : null}
+        </div>
+      ))}
     </div>
   );
 }
@@ -3555,6 +3667,22 @@ function formatDate(value?: string | null) {
   }).format(new Date(value));
 }
 
+function formatDateTime(value?: string | null) {
+  if (!value) {
+    return "Never";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(parsed);
+}
+
 function percent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
@@ -3590,6 +3718,19 @@ function decisionTone(value: string): "muted" | "teal" | "amber" | "rose" {
   }
   if (value === "reject" || value === "defer_pending_de_risking") {
     return "rose";
+  }
+  return "muted";
+}
+
+function providerStatusTone(status: string): "muted" | "teal" | "amber" | "rose" {
+  if (status === "ok" || status === "ready") {
+    return "teal";
+  }
+  if (status === "error") {
+    return "rose";
+  }
+  if (status === "disabled") {
+    return "amber";
   }
   return "muted";
 }

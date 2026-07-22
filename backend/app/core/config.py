@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     qdrant_url: str = Field(default="http://localhost:6333", alias="QDRANT_URL")
     ai_provider: str = Field(default="local", alias="AI_PROVIDER")
     business_data_mode: str = Field(default="demo", alias="BUSINESS_DATA_MODE")
-    maps_provider: str = Field(default="none", alias="MAPS_PROVIDER")
+    maps_provider: str = Field(default="osm_nominatim", alias="MAPS_PROVIDER")
     places_provider: str = Field(default="osm_nominatim", alias="PLACES_PROVIDER")
     weather_provider: str = Field(default="open_meteo", alias="WEATHER_PROVIDER")
     news_provider: str = Field(default="gdelt_doc", alias="NEWS_PROVIDER")

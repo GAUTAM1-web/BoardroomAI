@@ -323,6 +323,8 @@ export type EvidenceRecord = {
   source_name: string;
   source_url?: string | null;
   source_type: string;
+  source_category?: string | null;
+  provider?: string | null;
   retrieval_time: string;
   location?: Record<string, unknown> | null;
   value?: unknown;
@@ -375,6 +377,7 @@ export type BusinessAnalysisResult = {
     evidence_confidence: string;
   };
   evidence_confidence: string;
+  evidence_panel: Record<string, unknown>;
   evidence: EvidenceRecord[];
   competitors: Array<Record<string, unknown>>;
   suppliers: Array<Record<string, unknown>>;
@@ -386,10 +389,23 @@ export type BusinessAnalysisResult = {
   daily_sales: Record<string, unknown>;
   validation_plan: Array<Record<string, unknown>>;
   performance_tracking: Record<string, unknown>;
+  live_intelligence: Record<string, unknown>;
   missing_information: string[];
   warnings: string[];
   board_brief: StartupBriefPayload;
   report: BoardReport;
+};
+
+export type ProviderHealthEntry = {
+  type: string;
+  name: string;
+  status: string;
+  configured: boolean;
+  last_sync?: string | null;
+  latency_ms?: number | null;
+  error?: string | null;
+  cache_hit?: boolean;
+  cache_ttl_seconds?: number;
 };
 
 export type BusinessProviderStatus = {
@@ -397,5 +413,8 @@ export type BusinessProviderStatus = {
   maps_provider: string;
   live_maps_configured: boolean;
   live_places_configured: boolean;
+  providers: ProviderHealthEntry[];
+  cache: Record<string, unknown>;
+  last_updated?: string | null;
   modes: Array<Record<string, unknown>>;
 };

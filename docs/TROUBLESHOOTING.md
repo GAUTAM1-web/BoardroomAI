@@ -35,7 +35,16 @@ If running through Docker, rebuild and restart the stack.
 
 ## Provider unavailable
 
-Business intelligence works in demo and manual modes without provider keys. Live mode requires backend environment credentials. The Settings workspace shows redacted provider status and never exposes API keys.
+Business intelligence works in demo and manual modes without provider keys. Live mode attempts enabled public providers and configured backend providers, then continues with warnings when a source is disabled, slow, or unavailable.
+
+Recovery:
+
+- Open Settings and check Provider Health for status, latency, cache hits, and redacted errors.
+- Use Retry providers to clear the in-memory live-data cache and refresh diagnostics.
+- Set a provider variable to `none` to disable a connector cleanly.
+- Confirm `PROVIDER_USER_AGENT`, `LIVE_DATA_TIMEOUT_SECONDS`, and provider-specific keys are set in the backend environment when required.
+
+Provider secrets are never returned to the browser or Electron renderer.
 
 ## Desktop shell opens but data does not load
 
@@ -44,4 +53,3 @@ The Electron package runs the frontend, not PostgreSQL, Redis, Qdrant, or FastAP
 ## Offline mode
 
 The app detects browser or desktop offline state and surfaces a notification. Read-only UI remains visible; backend actions should be retried after connectivity returns.
-

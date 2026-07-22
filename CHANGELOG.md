@@ -2,6 +2,10 @@
 
 ## 1.0.0-rc.1
 
+- Added a real-world intelligence layer for business analyses with optional maps, places, weather, news, currency, government/open-data, and demographics providers.
+- Added provider health diagnostics, last-sync/latency/error reporting, smart in-memory live-data caching, and a retry endpoint that clears provider cache without exposing secrets.
+- Added evidence panels that separate live evidence, historical evidence, AI inference, and user-provided information in API responses and the Decide workspace.
+- Added live-mode location, weather, news, currency, government/open-data, and demographics sections to business decision briefs with graceful degradation when providers are unavailable.
 - Added enterprise workspace support with organizations, departments, teams, users, role permissions, comments, approvals, tasks, calendar events, notifications, templates, knowledge search, admin diagnostics, analytics, and audit trail endpoints.
 - Added a polished Enterprise view in the desktop/web shell with organization KPIs, pending approvals, tasks, calendar reviews, board activity, and executive signals.
 - Added Ctrl+K command palette, notification center, toast history, offline status, guided help center, first-run tour, friendlier recovery errors, richer skeleton loaders, improved empty states, and live meeting progress.

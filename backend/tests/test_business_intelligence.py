@@ -92,9 +92,16 @@ def test_evidence_panel_distinguishes_source_categories() -> None:
     panel = result["evidence_panel"]
 
     assert panel["summary"]["user_provided_information"] >= 1
-    assert panel["summary"]["ai_inference"] >= 1
     assert "live_evidence" in panel["categories"]
+    assert "ai_inference" in panel["categories"]
     assert result["evidence"][0]["source_category"] == "user_provided_information"
+
+    demo = build_business_analysis(
+        _request(data_mode="demo").model_copy(
+            update={"manual_competitors": [], "manual_suppliers": []}
+        )
+    )
+    assert demo["evidence_panel"]["summary"]["ai_inference"] >= 1
 
 
 def test_live_mode_gracefully_degrades_when_providers_are_disabled() -> None:
@@ -116,7 +123,10 @@ def test_live_mode_gracefully_degrades_when_providers_are_disabled() -> None:
 
     assert result["status"] == "completed"
     assert result["live_intelligence"]["provider_health"]["providers"]
-    assert any(provider["status"] == "disabled" for provider in result["evidence_panel"]["provider_health"])
+    assert any(
+        provider["status"] == "disabled"
+        for provider in result["evidence_panel"]["provider_health"]
+    )
     assert result["warnings"]
 
 

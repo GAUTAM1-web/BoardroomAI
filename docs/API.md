@@ -193,7 +193,7 @@ Role permissions:
 
 ## GET /api/v1/business-data/providers
 
-Returns configured provider mode, map provider name, whether live map/place credentials are configured, and the supported data modes.
+Returns configured provider mode, map provider name, whether live map/place sources are configured, provider health, cache status, and the supported data modes.
 
 This endpoint is safe for the Settings workspace. It returns provider names and boolean configuration status only; API keys and provider secrets are never returned.
 
@@ -201,7 +201,20 @@ Supported modes:
 
 - `demo`: labeled benchmark scaffolding only; no live local evidence.
 - `manual`: user-entered competitors, suppliers, quotations, observations, costs, and locations.
-- `live`: requires backend provider credentials. Missing credentials return actionable warnings.
+- `live`: attempts enabled public and configured providers. Missing or failed providers return actionable warnings.
+
+Provider health records include:
+
+- provider type and configured name
+- `ready`, `ok`, `disabled`, or `error` status
+- last sync time
+- latency in milliseconds
+- cache hit flag
+- redacted error text when a connector fails
+
+## POST /api/v1/business-data/providers/retry
+
+Clears the in-memory live-data cache and returns the same redacted provider-status payload as `GET /api/v1/business-data/providers`.
 
 ## POST /api/v1/business-analyses
 
@@ -262,6 +275,8 @@ The response includes:
 - recommendation
 - explainable Opportunity Score
 - evidence records
+- `evidence_panel` with counts for live evidence, historical evidence, AI inference, and user-provided information
+- `live_intelligence` with available location, weather, news, currency, government/open-data, demographics, and provider-health sections
 - competitors and suppliers
 - candidate areas and property analysis
 - customer segments

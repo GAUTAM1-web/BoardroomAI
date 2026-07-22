@@ -28,6 +28,7 @@ def test_business_intelligence_routes_are_registered() -> None:
     paths = schema["paths"]
 
     assert "get" in paths["/api/v1/business-data/providers"]
+    assert "post" in paths["/api/v1/business-data/providers/retry"]
     assert "post" in paths["/api/v1/business-analyses"]
     assert "get" in paths["/api/v1/business-analyses"]
     assert "get" in paths["/api/v1/business-analyses/{analysis_id}"]

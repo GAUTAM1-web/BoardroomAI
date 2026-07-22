@@ -310,13 +310,15 @@ def build_business_analysis(
 
 
 def provider_status(settings: Any) -> dict[str, Any]:
+    maps_provider = str(getattr(settings, "maps_provider", "none"))
+    public_maps = maps_provider in {"osm", "openstreetmap", "osm_nominatim"}
     maps_key = bool(getattr(settings, "maps_api_key", ""))
     places_key = bool(getattr(settings, "places_api_key", ""))
     health = provider_health(settings)
     return {
         "default_mode": getattr(settings, "business_data_mode", "demo"),
-        "maps_provider": getattr(settings, "maps_provider", "none"),
-        "live_maps_configured": maps_key,
+        "maps_provider": maps_provider,
+        "live_maps_configured": maps_key or public_maps,
         "live_places_configured": places_key
         or getattr(settings, "places_provider", "") in {"osm", "openstreetmap", "osm_nominatim"},
         "providers": health["providers"],
@@ -473,6 +475,7 @@ def _provider_label(payload: BusinessAnalysisRequest, settings: Any | None) -> s
         live_providers = [
             str(getattr(settings, name, "none"))
             for name in (
+                "maps_provider",
                 "places_provider",
                 "weather_provider",
                 "news_provider",
@@ -491,18 +494,20 @@ def _provider_warnings(payload: BusinessAnalysisRequest, settings: Any | None) -
     if payload.data_mode != "live":
         return warnings
 
+    maps_provider = str(getattr(settings, "maps_provider", "") if settings else "")
+    public_maps = maps_provider in {"osm", "openstreetmap", "osm_nominatim"}
     maps_configured = bool(getattr(settings, "maps_api_key", "")) if settings else False
     places_configured = bool(getattr(settings, "places_api_key", "")) if settings else False
     places_provider = str(getattr(settings, "places_provider", "") if settings else "")
     public_places = places_provider in {"osm", "openstreetmap", "osm_nominatim"}
-    if not maps_configured and not places_configured:
+    if not maps_configured and not public_maps and not places_configured and not public_places:
         warnings.append(
             "No keyed live location provider is configured. Public open-data providers may "
             "still be attempted when enabled."
         )
     elif not places_configured and not public_places:
         warnings.append(
-            "Live map credentials are present, but place-search credentials are missing. "
+            "Live map/geocoding is available, but place-search credentials are missing. "
             "Competitor and supplier discovery may be unavailable."
         )
     return warnings
