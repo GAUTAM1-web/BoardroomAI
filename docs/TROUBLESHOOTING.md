@@ -50,6 +50,31 @@ Provider secrets are never returned to the browser or Electron renderer.
 
 The Electron package runs the frontend, not PostgreSQL, Redis, Qdrant, or FastAPI. Start the backend stack locally or configure the desktop environment to point at a reachable backend.
 
+## Production API points at localhost
+
+Symptoms:
+
+- Public frontend loads but API calls fail in the browser
+- Network panel shows `localhost:8000` from a hosted site
+
+Recovery:
+
+- Set `NEXT_PUBLIC_API_BASE_URL` to the public backend URL for split-host production.
+- Set `NEXT_PUBLIC_WS_BASE_URL` to the matching `wss://` backend URL.
+- Keep `API_INTERNAL_BASE_URL` set for same-origin proxy builds or Docker.
+- Check `/api/v1/diagnostics/environment` for detected deployment target and public URLs.
+
+## Demo workspace is empty
+
+Fresh workspaces seed portfolio demo content only when `DEMO_CONTENT_ENABLED=true`. Confirm the
+backend environment and run migrations. Existing workspaces are not duplicated; the seed is
+idempotent.
+
+## Login or logout fails
+
+Check `GET /api/v1/auth/config` to confirm enabled modes. In production, set a long
+`SESSION_SECRET` and serve the API over HTTPS so secure cookies can round-trip.
+
 ## Offline mode
 
 The app detects browser or desktop offline state and surfaces a notification. Read-only UI remains visible; backend actions should be retried after connectivity returns.

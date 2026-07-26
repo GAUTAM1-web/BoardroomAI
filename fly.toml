@@ -1,0 +1,21 @@
+app = "boardroomai-backend"
+primary_region = "bom"
+
+[build]
+  dockerfile = "Dockerfile.backend"
+
+[env]
+  APP_ENV = "production"
+  DEPLOYMENT_TARGET = "fly.io"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1

@@ -2,6 +2,10 @@
 
 Boardroom AI enterprise mode is additive. Existing single-user workflows continue to work because the backend seeds a `Default Organization` and `Workspace Owner` automatically.
 
+Demo login is also additive. `/workspace?auth=demo` creates an Administrator session and, when
+`DEMO_CONTENT_ENABLED=true`, fresh default workspaces include portfolio-ready meetings, approvals,
+tasks, notifications, reports, and a business analysis.
+
 ## Workspace Model
 
 ```text
@@ -46,3 +50,6 @@ The Enterprise tab uses `/api/v1/enterprise/dashboard` and shows:
 - upcoming reviews and deadlines
 - board activity
 - executive decision signals
+
+If the enterprise dashboard endpoint is unavailable in an older backend, the frontend falls back to
+legacy dashboard and meeting-history data so the workspace remains usable.

@@ -131,6 +131,32 @@ export type EnterpriseDashboard = {
   executive_dashboard: Record<string, unknown>;
 };
 
+export type AuthMode = "email" | "demo" | "guest";
+
+export type AuthUser = {
+  email: string;
+  display_name: string;
+  role: string;
+  organization: string;
+};
+
+export type AuthSession = {
+  authenticated: boolean;
+  session_id: string;
+  mode: AuthMode | string;
+  user: AuthUser;
+  issued_at: string;
+  expires_at: string;
+};
+
+export type AuthConfig = {
+  email_login: boolean;
+  demo_account: boolean;
+  guest_mode: boolean;
+  session_persistence: boolean;
+  oauth_ready: Array<Record<string, unknown>>;
+};
+
 export type GlobalSearchResults = {
   query: string;
   meetings: MeetingSummary[];

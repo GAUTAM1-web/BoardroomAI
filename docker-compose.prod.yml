@@ -1,0 +1,90 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-boardroom_ai}
+      POSTGRES_USER: ${POSTGRES_USER:-boardroom}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-before-production}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-boardroom} -d ${POSTGRES_DB:-boardroom_ai}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+
+  qdrant:
+    image: qdrant/qdrant:v1.11.3
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      APP_ENV: production
+      DEPLOYMENT_TARGET: ${DEPLOYMENT_TARGET:-docker}
+      PUBLIC_FRONTEND_URL: ${PUBLIC_FRONTEND_URL:-https://boardroom.example.com}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-https://api.boardroom.example.com}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-https://boardroom.example.com}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-boardroom}:${POSTGRES_PASSWORD:-change-me-before-production}@postgres:5432/${POSTGRES_DB:-boardroom_ai}
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      SESSION_SECRET: ${SESSION_SECRET:-replace-with-a-long-random-secret}
+      DEMO_CONTENT_ENABLED: ${DEMO_CONTENT_ENABLED:-true}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-240}
+      SECURITY_HEADERS_ENABLED: "true"
+      BUSINESS_DATA_MODE: ${BUSINESS_DATA_MODE:-demo}
+      MAPS_PROVIDER: ${MAPS_PROVIDER:-osm_nominatim}
+      PLACES_PROVIDER: ${PLACES_PROVIDER:-osm_nominatim}
+      WEATHER_PROVIDER: ${WEATHER_PROVIDER:-open_meteo}
+      NEWS_PROVIDER: ${NEWS_PROVIDER:-gdelt_doc}
+      CURRENCY_PROVIDER: ${CURRENCY_PROVIDER:-frankfurter}
+      GOVERNMENT_DATA_PROVIDER: ${GOVERNMENT_DATA_PROVIDER:-world_bank}
+      DEMOGRAPHICS_PROVIDER: ${DEMOGRAPHICS_PROVIDER:-world_bank}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      MAPS_API_KEY: ${MAPS_API_KEY:-}
+      PLACES_API_KEY: ${PLACES_API_KEY:-}
+      GDELT_API_KEY: ${GDELT_API_KEY:-}
+      PROVIDER_USER_AGENT: ${PROVIDER_USER_AGENT:-BoardroomAI/1.0-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      qdrant:
+        condition: service_started
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        API_INTERNAL_BASE_URL: http://backend:8000
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
+        NEXT_PUBLIC_WS_BASE_URL: ${NEXT_PUBLIC_WS_BASE_URL:-wss://api.boardroom.example.com}
+        NEXT_PUBLIC_GITHUB_URL: ${NEXT_PUBLIC_GITHUB_URL:-}
+    environment:
+      API_INTERNAL_BASE_URL: http://backend:8000
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
+      NEXT_PUBLIC_WS_BASE_URL: ${NEXT_PUBLIC_WS_BASE_URL:-wss://api.boardroom.example.com}
+      NEXT_PUBLIC_GITHUB_URL: ${NEXT_PUBLIC_GITHUB_URL:-}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:

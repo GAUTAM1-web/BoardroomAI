@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: boardroomai-backend
+    runtime: docker
+    dockerfilePath: Dockerfile.backend
+    dockerContext: .
+    healthCheckPath: /health/ready
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEPLOYMENT_TARGET
+        value: render
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: QDRANT_URL
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+  - type: web
+    name: boardroomai-frontend
+    runtime: docker
+    dockerfilePath: frontend/Dockerfile
+    dockerContext: frontend
+    envVars:
+      - key: API_INTERNAL_BASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_WS_BASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_GITHUB_URL
+        sync: false

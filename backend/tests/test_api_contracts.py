@@ -61,3 +61,19 @@ def test_enterprise_collaboration_routes_are_registered() -> None:
     assert "post" in paths["/api/v1/reports/{meeting_id}/comments"]
     assert "patch" in paths["/api/v1/reports/{meeting_id}/comments/{comment_id}"]
     assert "post" in paths["/api/v1/approvals/{workflow_id}/steps/{step_id}/decision"]
+
+
+def test_production_readiness_routes_are_registered() -> None:
+    schema = create_app().openapi()
+    paths = schema["paths"]
+
+    assert "get" in paths["/health/live"]
+    assert "get" in paths["/health/ready"]
+    assert "get" in paths["/api/v1/auth/config"]
+    assert "get" in paths["/api/v1/auth/session"]
+    assert "post" in paths["/api/v1/auth/session"]
+    assert "post" in paths["/api/v1/auth/logout"]
+    assert "get" in paths["/api/v1/diagnostics"]
+    assert "get" in paths["/api/v1/diagnostics/environment"]
+    assert "get" in paths["/api/v1/diagnostics/providers"]
+    assert "get" in paths["/api/v1/diagnostics/dependencies"]

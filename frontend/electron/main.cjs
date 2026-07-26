@@ -102,7 +102,7 @@ function createMainWindow() {
     });
   }
 
-  mainWindow.loadURL(getServerUrl());
+  mainWindow.loadURL(`${getServerUrl()}/workspace`);
 }
 
 function createMenu() {

@@ -1,4 +1,7 @@
 import type {
+  AuthConfig,
+  AuthMode,
+  AuthSession,
   BoardMeetingDetail,
   BoardMeetingResult,
   BusinessAnalysisPayload,
@@ -169,6 +172,65 @@ export async function fetchEnterpriseDashboard(): Promise<EnterpriseDashboard> {
     }
     throw error;
   }
+}
+
+export async function fetchAuthConfig(): Promise<AuthConfig> {
+  return requestJson<AuthConfig>(
+    `${API_PREFIX}/auth/config`,
+    {
+      cache: "no-store",
+      credentials: "include"
+    },
+    "Authentication config failed to load"
+  );
+}
+
+export async function fetchAuthSession(): Promise<{
+  authenticated: boolean;
+  session: AuthSession | null;
+  capabilities: Record<string, unknown>;
+}> {
+  return requestJson<{
+    authenticated: boolean;
+    session: AuthSession | null;
+    capabilities: Record<string, unknown>;
+  }>(
+    `${API_PREFIX}/auth/session`,
+    {
+      cache: "no-store",
+      credentials: "include"
+    },
+    "Authentication session failed to load"
+  );
+}
+
+export async function createAuthSession(payload: {
+  mode: AuthMode;
+  email?: string;
+}): Promise<AuthSession> {
+  return requestJson<AuthSession>(
+    `${API_PREFIX}/auth/session`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      credentials: "include",
+      body: JSON.stringify(payload)
+    },
+    "Authentication failed"
+  );
+}
+
+export async function logoutAuthSession(): Promise<void> {
+  await requestNoContent(
+    `${API_PREFIX}/auth/logout`,
+    {
+      method: "POST",
+      credentials: "include"
+    },
+    "Logout failed"
+  );
 }
 
 export async function fetchMeetings(options?: {

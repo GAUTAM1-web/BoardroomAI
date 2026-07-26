@@ -13,6 +13,10 @@ REPO_DIR = BACKEND_DIR.parent
 class Settings(BaseSettings):
     app_env: str = Field(default="development", alias="APP_ENV")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    deployment_target: str = Field(default="auto", alias="DEPLOYMENT_TARGET")
+    public_frontend_url: str = Field(default="", alias="PUBLIC_FRONTEND_URL")
+    public_api_url: str = Field(default="", alias="PUBLIC_API_URL")
+    frontend_base_url: str = Field(default="", alias="FRONTEND_BASE_URL")
     database_url: str = Field(
         default="postgresql+asyncpg://boardroom:boardroom_dev_password@localhost:5432/boardroom_ai",
         alias="DATABASE_URL",
@@ -39,6 +43,17 @@ class Settings(BaseSettings):
         default="BoardroomAI/1.0 (local development; contact=admin@boardroom.local)",
         alias="PROVIDER_USER_AGENT",
     )
+    session_secret: str = Field(default="", alias="SESSION_SECRET")
+    session_cookie_name: str = Field(default="boardroom_session", alias="SESSION_COOKIE_NAME")
+    session_ttl_seconds: int = Field(default=604800, alias="SESSION_TTL_SECONDS")
+    auth_email_enabled: bool = Field(default=True, alias="AUTH_EMAIL_ENABLED")
+    auth_demo_enabled: bool = Field(default=True, alias="AUTH_DEMO_ENABLED")
+    auth_guest_enabled: bool = Field(default=True, alias="AUTH_GUEST_ENABLED")
+    oauth_google_enabled: bool = Field(default=False, alias="OAUTH_GOOGLE_ENABLED")
+    google_client_id: str = Field(default="", alias="GOOGLE_CLIENT_ID")
+    demo_content_enabled: bool = Field(default=True, alias="DEMO_CONTENT_ENABLED")
+    rate_limit_per_minute: int = Field(default=240, alias="RATE_LIMIT_PER_MINUTE")
+    security_headers_enabled: bool = Field(default=True, alias="SECURITY_HEADERS_ENABLED")
     cors_origins: list[str] = Field(
         default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"]
     )

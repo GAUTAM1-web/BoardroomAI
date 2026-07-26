@@ -9,6 +9,7 @@ from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import get_settings
 from app.domain.boardroom.models import (
     BoardMeetingResult,
     BoardReport,
@@ -19,6 +20,7 @@ from app.domain.boardroom.models import (
 )
 from app.domain.boardroom.roles import EXECUTIVE_PROFILES, select_executive_profiles
 from app.domain.boardroom.streaming import REPORT_SECTION_TITLES, BoardroomStreamEvent
+from app.domain.business_intelligence.service import build_business_analysis
 from app.domain.enterprise.security import ENTERPRISE_PERMISSIONS
 from app.infrastructure.database.models import (
     ApprovalStepRecord,
@@ -52,9 +54,12 @@ from app.infrastructure.database.models import (
     StartupBriefRecord,
     VoteEventRecord,
 )
+from app.schemas.business import BusinessAnalysisRequest
 
 DEFAULT_ORGANIZATION_SLUG = "default"
 DEFAULT_USER_EMAIL = "owner@boardroom.local"
+PORTFOLIO_DEMO_STARTUP_IDEA = "Portfolio Demo: Neighborhood Health Ops Copilot"
+PORTFOLIO_DEMO_BUSINESS_IDEA = "Portfolio Demo: High-street healthy quick-service restaurant"
 
 DEFAULT_REPORT_TEMPLATES = (
     ("Restaurant", "restaurant"),
@@ -146,6 +151,8 @@ class PostgresMeetingRepository:
         await self._ensure_default_templates(organization.id)
         await self._ensure_default_knowledge(organization.id)
         await self._ensure_default_calendar(organization.id)
+        if get_settings().demo_content_enabled:
+            await self._ensure_portfolio_demo_content(organization.id, user.id)
         await self.session.commit()
         return {"organization_id": organization.id, "user_id": user.id}
 
@@ -568,14 +575,29 @@ class PostgresMeetingRepository:
         result: dict[str, object],
     ) -> None:
         workspace = await self.ensure_default_workspace()
+        await self._add_business_analysis_records(
+            workspace["organization_id"],
+            workspace["user_id"],
+            request_payload,
+            result,
+        )
+        await self.session.commit()
+
+    async def _add_business_analysis_records(
+        self,
+        organization_id: UUID,
+        user_id: UUID,
+        request_payload: dict[str, object],
+        result: dict[str, object],
+    ) -> UUID:
         analysis_id = UUID(str(result["analysis_id"]))
         intake = result["intake"]
         recommendation = result["recommendation"]
         opportunity_score = result["opportunity_score"]
         record = BusinessAnalysisRecord(
             id=analysis_id,
-            organization_id=workspace["organization_id"],
-            created_by_user_id=workspace["user_id"],
+            organization_id=organization_id,
+            created_by_user_id=user_id,
             workflow_type=str(intake["workflow_type"]),
             business_idea=str(intake["business_idea"]),
             business_category=str(intake["business_category"]),
@@ -591,8 +613,8 @@ class PostgresMeetingRepository:
         )
         self.session.add(record)
         self._add_audit_event(
-            workspace["organization_id"],
-            workspace["user_id"],
+            organization_id,
+            user_id,
             "business_analysis.created",
             "business_analysis",
             analysis_id,
@@ -679,7 +701,7 @@ class PostgresMeetingRepository:
                     status="open",
                 )
             )
-        await self.session.commit()
+        return analysis_id
 
     async def list_business_analyses(self, limit: int = 30) -> list[dict[str, object]]:
         stmt = (
@@ -1473,6 +1495,347 @@ class PostgresMeetingRepository:
             )
         ).all()
         return [self._notification_dict(record) for record in records]
+
+    async def _ensure_portfolio_demo_content(self, organization_id: UUID, user_id: UUID) -> None:
+        await self._ensure_portfolio_demo_meeting(organization_id, user_id)
+        await self._ensure_portfolio_demo_business_analysis(organization_id, user_id)
+
+    async def _ensure_portfolio_demo_meeting(self, organization_id: UUID, user_id: UUID) -> None:
+        existing = await self.session.scalar(
+            select(BoardMeetingRecord)
+            .join(BoardMeetingRecord.startup_brief)
+            .where(
+                BoardMeetingRecord.organization_id == organization_id,
+                StartupBriefRecord.startup_idea == PORTFOLIO_DEMO_STARTUP_IDEA,
+            )
+        )
+        if existing is not None:
+            return
+
+        now = datetime.now(UTC)
+        meeting_id = uuid4()
+        brief_id = uuid4()
+        report_id = uuid4()
+        self.session.add(
+            StartupBriefRecord(
+                id=brief_id,
+                startup_idea=PORTFOLIO_DEMO_STARTUP_IDEA,
+                industry="Healthcare operations AI",
+                country="United States",
+                budget=Decimal("180000.00"),
+                timeline_months=6,
+                competitors=["Abridge", "Nabla", "Notable"],
+                target_audience="Independent clinics with five to fifty staff members",
+                funding_stage="pre-seed",
+                business_model="B2B SaaS",
+                meeting_mode="investor_pitch",
+                created_at=now - timedelta(days=5),
+            )
+        )
+        self.session.add(
+            BoardMeetingRecord(
+                id=meeting_id,
+                organization_id=organization_id,
+                created_by_user_id=user_id,
+                startup_brief_id=brief_id,
+                status="completed",
+                is_favorite=True,
+                consensus_reached=True,
+                aggregate_confidence=Decimal("0.8400"),
+                decision="approve_with_conditions",
+                current_phase="completed",
+                assessment={
+                    "overall_risk": 0.38,
+                    "risk_scores": {
+                        "market": 0.32,
+                        "financial": 0.36,
+                        "operational": 0.42,
+                        "legal": 0.48,
+                    },
+                    "signals": {
+                        "market": "Strong clinic pain, but workflow adoption must be proven.",
+                        "legal": "HIPAA review and vendor BAAs are pre-launch blockers.",
+                    },
+                },
+                created_at=now - timedelta(days=5),
+                completed_at=now - timedelta(days=4, hours=20),
+            )
+        )
+        for profile in EXECUTIVE_PROFILES[:6]:
+            self.session.add(
+                ExecutiveAgentRecord(
+                    board_meeting_id=meeting_id,
+                    role=profile.role,
+                    charter=profile.charter,
+                    personality=profile.personality,
+                    goals=list(profile.goals),
+                    risk_focus=list(profile.risk_focus),
+                )
+            )
+        for sequence, role, stance, message in (
+            (
+                1,
+                "CEO",
+                "supportive",
+                "The wedge is specific enough for a focused clinic operations pilot.",
+            ),
+            (
+                2,
+                "Risk Officer",
+                "cautious",
+                "Approval should depend on security review and signed pilot letters.",
+            ),
+            (
+                3,
+                "CFO",
+                "conditional",
+                "Budget is viable if the team keeps integration scope narrow.",
+            ),
+        ):
+            self.session.add(
+                MeetingTurnRecord(
+                    board_meeting_id=meeting_id,
+                    sequence=sequence,
+                    round_number=1,
+                    speaker_role=role,
+                    turn_type="portfolio_demo",
+                    topic="Demo decision review",
+                    stance=stance,
+                    confidence=Decimal("0.8200"),
+                    message=message,
+                    concerns=["Evidence must be validated with pilots"],
+                    recommendations=["Secure two design partners", "Complete compliance review"],
+                    reasoning=["Demo seed for recruiter walkthrough"],
+                    memory_references=["portfolio-demo"],
+                    created_at=now - timedelta(days=4, hours=23, minutes=60 - sequence),
+                )
+            )
+        for role, vote, confidence, rationale in (
+            (
+                "CEO",
+                "approve_with_conditions",
+                Decimal("0.8700"),
+                "Approve after pilot evidence and security checklist.",
+            ),
+            (
+                "Risk Officer",
+                "approve_with_conditions",
+                Decimal("0.7600"),
+                "Proceed only with explicit compliance gates.",
+            ),
+            (
+                "CFO",
+                "approve_with_conditions",
+                Decimal("0.8400"),
+                "Capital plan is controlled enough for a six-month validation cycle.",
+            ),
+        ):
+            self.session.add(
+                BoardVoteRecord(
+                    board_meeting_id=meeting_id,
+                    role=role,
+                    vote=vote,
+                    confidence=confidence,
+                    rationale=rationale,
+                )
+            )
+        self.session.add(
+            FinalReportRecord(
+                id=report_id,
+                board_meeting_id=meeting_id,
+                title="Board Report: Neighborhood Health Ops Copilot",
+                decision="approve_with_conditions",
+                created_at=now - timedelta(days=4, hours=20),
+            )
+        )
+        for position, (section_key, section_title, content) in enumerate(
+            (
+                (
+                    "executive_summary",
+                    "Executive Summary",
+                    {
+                        "summary": "Approve a narrow clinic-ops pilot with compliance gates.",
+                        "conditions": [
+                            "Two signed pilot letters",
+                            "HIPAA/security review",
+                            "Integration scope capped at scheduling and documentation workflows",
+                        ],
+                    },
+                ),
+                (
+                    "evidence_packet",
+                    "Evidence Packet",
+                    {
+                        "live_evidence": 0,
+                        "historical_evidence": 2,
+                        "user_provided_information": 3,
+                        "ai_inference": 4,
+                    },
+                ),
+                (
+                    "decision_history",
+                    "Decision History",
+                    {
+                        "created_by": DEFAULT_USER_EMAIL,
+                        "approved_by": "CEO",
+                        "reason": "Portfolio demo seed for review workflows.",
+                        "confidence": 0.84,
+                    },
+                ),
+            ),
+            start=1,
+        ):
+            self.session.add(
+                ReportSectionRecord(
+                    final_report_id=report_id,
+                    section_key=section_key,
+                    section_title=section_title,
+                    content=content,
+                    position=position,
+                )
+            )
+        workflow_id = uuid4()
+        self.session.add(
+            ApprovalWorkflowRecord(
+                id=workflow_id,
+                organization_id=organization_id,
+                board_meeting_id=meeting_id,
+                status="pending",
+                requested_by_user_id=user_id,
+                reason="Demo manager and CEO sign-off path.",
+                created_at=now - timedelta(days=3),
+            )
+        )
+        for position, role in enumerate(("Manager", "CEO"), start=1):
+            self.session.add(
+                ApprovalStepRecord(
+                    workflow_id=workflow_id,
+                    role=role,
+                    position=position,
+                    status="pending",
+                )
+            )
+        self.session.add(
+            EnterpriseTaskRecord(
+                organization_id=organization_id,
+                board_meeting_id=meeting_id,
+                assignee_user_id=user_id,
+                title="Validate clinic pilot commitments",
+                description="Confirm two design partners and document integration constraints.",
+                source="portfolio_demo",
+                status="open",
+                due_at=now + timedelta(days=10),
+            )
+        )
+        self.session.add(
+            EnterpriseNotificationRecord(
+                organization_id=organization_id,
+                user_id=user_id,
+                channel="in_app",
+                title="Recruiter demo workspace is ready",
+                body="A sample meeting, report, approval, task, and business analysis were seeded.",
+                status="unread",
+                created_at=now - timedelta(days=2),
+            )
+        )
+        self._add_audit_event(
+            organization_id,
+            user_id,
+            "portfolio_demo.seeded",
+            "board_meeting",
+            meeting_id,
+            {"startup_idea": PORTFOLIO_DEMO_STARTUP_IDEA},
+        )
+
+    async def _ensure_portfolio_demo_business_analysis(
+        self,
+        organization_id: UUID,
+        user_id: UUID,
+    ) -> None:
+        existing = await self.session.scalar(
+            select(BusinessAnalysisRecord).where(
+                BusinessAnalysisRecord.organization_id == organization_id,
+                BusinessAnalysisRecord.business_idea == PORTFOLIO_DEMO_BUSINESS_IDEA,
+            )
+        )
+        if existing is not None:
+            return
+
+        request = BusinessAnalysisRequest.model_validate(
+            {
+                "workflow_type": "existing_idea",
+                "business_idea": PORTFOLIO_DEMO_BUSINESS_IDEA,
+                "business_category": "Restaurant",
+                "location": {
+                    "country": "India",
+                    "city": "Bengaluru",
+                    "locality": "Indiranagar",
+                    "radius_km": 3,
+                    "source": "manual",
+                },
+                "budget": 1800000,
+                "priorities": [
+                    "Full analysis",
+                    "Supplier validation",
+                    "Required daily sales",
+                ],
+                "data_mode": "demo",
+                "shop_size_sqft": 850,
+                "target_customers": "office workers, students, and evening delivery customers",
+                "risk_tolerance": "medium",
+                "timeline": "Open within four months",
+                "manual_competitors": [
+                    {
+                        "name": "Indiranagar Bowl Co.",
+                        "category": "healthy bowls",
+                        "distance_km": 0.8,
+                        "notes": "Observed lunch queues in demo scenario.",
+                    }
+                ],
+                "manual_suppliers": [
+                    {
+                        "name": "Fresh Produce Aggregator",
+                        "category": "vegetables and grains",
+                        "distance_km": 7,
+                        "product_categories": ["produce", "grains", "packaging"],
+                        "delivery_available": True,
+                        "contact_status": "shortlisted",
+                    }
+                ],
+                "financial_assumptions": {
+                    "expected_rent": 220000,
+                    "security_deposit": 1320000,
+                    "equipment_budget": 450000,
+                    "opening_inventory_budget": 180000,
+                    "marketing_budget": 120000,
+                    "monthly_staff_cost": 240000,
+                    "working_capital_months": 3,
+                    "average_transaction_value": 260,
+                    "gross_margin_percent": 58,
+                    "working_days_per_month": 30,
+                },
+                "optional_inputs": {"portfolio_demo": True},
+            }
+        )
+        result = build_business_analysis(request, settings=get_settings())
+        analysis_id = await self._add_business_analysis_records(
+            organization_id,
+            user_id,
+            request.model_dump(mode="json"),
+            result,
+        )
+        self.session.add(
+            EnterpriseTaskRecord(
+                organization_id=organization_id,
+                business_analysis_id=analysis_id,
+                assignee_user_id=user_id,
+                title="Visit shortlisted restaurant location",
+                description="Check footfall, frontage, parking, and nearby competitors.",
+                source="portfolio_demo",
+                status="open",
+                due_at=datetime.now(UTC) + timedelta(days=5),
+            )
+        )
 
     async def _ensure_default_templates(self, organization_id: UUID) -> None:
         existing = set(

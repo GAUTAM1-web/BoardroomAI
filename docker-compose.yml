@@ -41,6 +41,19 @@ services:
       DATABASE_URL: postgresql+asyncpg://boardroom:boardroom_dev_password@postgres:5432/boardroom_ai
       REDIS_URL: redis://redis:6379/0
       QDRANT_URL: http://qdrant:6333
+      DEPLOYMENT_TARGET: ${DEPLOYMENT_TARGET:-docker}
+      PUBLIC_FRONTEND_URL: ${PUBLIC_FRONTEND_URL:-http://localhost:3000}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8000}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
+      SESSION_SECRET: ${SESSION_SECRET:-development-session-secret-change-before-production}
+      AUTH_EMAIL_ENABLED: ${AUTH_EMAIL_ENABLED:-true}
+      AUTH_DEMO_ENABLED: ${AUTH_DEMO_ENABLED:-true}
+      AUTH_GUEST_ENABLED: ${AUTH_GUEST_ENABLED:-true}
+      OAUTH_GOOGLE_ENABLED: ${OAUTH_GOOGLE_ENABLED:-false}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      DEMO_CONTENT_ENABLED: ${DEMO_CONTENT_ENABLED:-true}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-240}
+      SECURITY_HEADERS_ENABLED: ${SECURITY_HEADERS_ENABLED:-true}
       BUSINESS_DATA_MODE: ${BUSINESS_DATA_MODE:-demo}
       MAPS_PROVIDER: ${MAPS_PROVIDER:-osm_nominatim}
       PLACES_PROVIDER: ${PLACES_PROVIDER:-osm_nominatim}
@@ -85,10 +98,12 @@ services:
         API_INTERNAL_BASE_URL: http://backend:8000
         NEXT_PUBLIC_API_BASE_URL: ""
         NEXT_PUBLIC_WS_BASE_URL: ws://localhost:8000
+        NEXT_PUBLIC_GITHUB_URL: ${NEXT_PUBLIC_GITHUB_URL:-}
     environment:
       API_INTERNAL_BASE_URL: http://backend:8000
       NEXT_PUBLIC_API_BASE_URL: ""
       NEXT_PUBLIC_WS_BASE_URL: ws://localhost:8000
+      NEXT_PUBLIC_GITHUB_URL: ${NEXT_PUBLIC_GITHUB_URL:-}
     ports:
       - "3000:3000"
     depends_on:

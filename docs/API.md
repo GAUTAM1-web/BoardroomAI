@@ -14,6 +14,27 @@ Version prefix:
 
 Enterprise role checks use the optional `X-Boardroom-Role` header. When the header is omitted, the API defaults to `Administrator` so existing single-user and desktop flows continue to work unchanged.
 
+## Health And Diagnostics
+
+- `GET /health` - compatibility health check.
+- `GET /health/live` - process liveness.
+- `GET /health/ready` - readiness and deployment target.
+- `GET /api/v1/diagnostics/environment` - redacted environment readiness.
+- `GET /api/v1/diagnostics/providers` - provider health and redacted secret posture.
+- `GET /api/v1/diagnostics/dependencies` - PostgreSQL, Redis, and Qdrant checks.
+- `GET /api/v1/diagnostics` - combined diagnostics payload.
+
+## Auth Endpoints
+
+Authentication is additive. Existing APIs still work when no session is sent.
+
+- `GET /api/v1/auth/config` - enabled auth modes and OAuth readiness.
+- `GET /api/v1/auth/session` - current cookie or bearer session status.
+- `POST /api/v1/auth/session` - creates an email, demo, or guest session.
+- `POST /api/v1/auth/logout` - clears the session cookie.
+
+Session cookies are HTTP-only. Production mode marks them secure.
+
 ## GET /api/v1/executives
 
 Returns the 19 executive profiles used by the boardroom, including the permanent Risk Officer.

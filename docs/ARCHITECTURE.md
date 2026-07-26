@@ -14,6 +14,11 @@ Milestone 10 is a product-quality pass. It improves the shell with a command pal
 
 Milestone 11 extends the business-intelligence domain with optional real-world providers. Maps, places, weather, news, currency, government/open-data, and demographics adapters add evidence when available, record provider health, use short-lived caching, and degrade with warnings instead of blocking the base analysis.
 
+Milestone 12 adds a production shell around the existing architecture. The public landing page,
+auth/session layer, demo workspace seed, deployment manifests, diagnostics routes, security
+headers, and environment detection are additive; boardroom, business intelligence, enterprise,
+desktop, and Docker APIs remain stable.
+
 ## System Boundaries
 
 ```text
@@ -29,6 +34,25 @@ Founder UI
   -> Redis event/cache layer
   -> Qdrant strategic memory and retrieval layer
 ```
+
+## Production Shell
+
+The frontend now has two public entry points:
+
+- `/` - public landing page for portfolio, recruiter, investor, and demo traffic.
+- `/workspace` - authenticated BoardroomAI workspace used by browser and Electron.
+
+`/meeting` remains a compatibility alias to the workspace. Electron loads `/workspace` from the
+local standalone Next.js server.
+
+The backend adds stateless HMAC sessions, auth capability discovery, liveness/readiness checks,
+redacted environment diagnostics, dependency diagnostics, lightweight rate limiting, and security
+headers. These routes do not replace existing APIs or require sessions for legacy single-user
+flows.
+
+Fresh default workspaces can seed portfolio demo records when `DEMO_CONTENT_ENABLED=true`, using
+normal PostgreSQL tables so dashboards, history, enterprise workflows, reports, search, approvals,
+tasks, notifications, and business analyses all exercise the real API surface.
 
 ## Monorepo Structure
 

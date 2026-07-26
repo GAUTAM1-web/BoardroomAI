@@ -2,6 +2,12 @@
 
 ## 1.0.0-rc.1
 
+- Added production deployment readiness with public landing page, `/workspace` shell, demo account, guest mode, email session creation, secure logout, OAuth-ready Google config, and HTTP-only session cookies.
+- Added idempotent portfolio demo seed for fresh default workspaces, including a sample meeting, report, approval workflow, tasks, notification, templates, knowledge, calendar review, and business analysis.
+- Added liveness/readiness checks, redacted environment diagnostics, dependency diagnostics, provider diagnostics, security headers, rate limiting, and deployment target detection.
+- Added Vercel, Railway, Render, Fly.io, production Docker Compose, and root backend Dockerfile deployment scaffolding.
+- Updated Docker/frontend API configuration to avoid hardcoded localhost in production while preserving same-origin proxy mode for local and Docker development.
+- Updated deployment, environment, developer, API, architecture, enterprise, desktop, troubleshooting, README, and changelog documentation.
 - Added a real-world intelligence layer for business analyses with optional maps, places, weather, news, currency, government/open-data, and demographics providers.
 - Added provider health diagnostics, last-sync/latency/error reporting, smart in-memory live-data caching, and a retry endpoint that clears provider cache without exposing secrets.
 - Added evidence panels that separate live evidence, historical evidence, AI inference, and user-provided information in API responses and the Decide workspace.

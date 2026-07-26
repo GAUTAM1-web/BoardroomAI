@@ -6,7 +6,7 @@ Milestone 5 expands the product into an evidence-based business decision platfor
 
 Milestone 6 upgrades the board itself into an evidence-first executive intelligence layer with permanent executive personalities, dynamic meeting modes, devil's advocate review, confidence timelines, replayable decisions, and final decision briefs. Executive Intelligence Engine V2 adds silent internal research, a staged reasoning pipeline, debate trees, confidence propagation, counterfactuals, scenario simulation, cognitive-bias detection, AI reflection, and a decision journal.
 
-Milestone 8 adds the enterprise workspace layer: default organizations, departments, teams, users, role permissions, comments, approvals, tasks, calendar events, notifications, knowledge search, templates, analytics, admin diagnostics, and audit logging. Milestone 10 polishes the product shell with a command palette, notification center, richer loading/empty/error states, offline awareness, a help center, and a clearer live-meeting progress experience. Milestone 11 adds a real-world intelligence layer with optional maps, places, weather, news, currency, government/open-data, and demographics providers.
+Milestone 8 adds the enterprise workspace layer: default organizations, departments, teams, users, role permissions, comments, approvals, tasks, calendar events, notifications, knowledge search, templates, analytics, admin diagnostics, and audit logging. Milestone 10 polishes the product shell with a command palette, notification center, richer loading/empty/error states, offline awareness, a help center, and a clearer live-meeting progress experience. Milestone 11 adds a real-world intelligence layer with optional maps, places, weather, news, currency, government/open-data, and demographics providers. Milestone 12 adds the production shell: public landing page, workspace auth gate, demo account, idempotent demo seed, cloud/Docker deployment manifests, diagnostics, security headers, and environment validation.
 
 ## Current Capabilities
 
@@ -32,6 +32,9 @@ Milestone 8 adds the enterprise workspace layer: default organizations, departme
 - Explainable Opportunity Score, supplier/procurement plan, opening inventory, editable finance assumptions, daily-sales targets, validation plan, and board-ready brief.
 - Business analysis history, evidence records, saved suppliers, validation tasks, performance entries, and weekly board-review scaffolding.
 - Dockerized FastAPI, Next.js, PostgreSQL, Redis, and Qdrant stack.
+- Public landing page at `/`, authenticated workspace at `/workspace`, recruiter demo at `/workspace?auth=demo`, and legacy `/meeting` compatibility.
+- Additive email/demo/guest sessions with HTTP-only cookies, OAuth-ready Google configuration, secure logout, and local fallback for demo/guest mode when the backend is offline.
+- Production readiness routes for liveness, readiness, environment diagnostics, dependency diagnostics, and provider diagnostics.
 - Windows desktop shell powered by Electron with custom icon, splash screen, About dialog, production window, installer target, and portable executable target.
 
 ## Stack
@@ -84,6 +87,8 @@ same database settings.
 Local URLs:
 
 - Frontend: `http://localhost:3000`
+- Workspace: `http://localhost:3000/workspace`
+- Recruiter demo: `http://localhost:3000/workspace?auth=demo`
 - Backend health: `http://localhost:8000/health`
 - Backend API docs: `http://localhost:8000/docs`
 - Live board WebSocket: `ws://localhost:8000/api/v1/board-meetings/live`
@@ -98,6 +103,13 @@ The frontend supports two HTTP API modes:
   browser requests to bypass the Next.js proxy.
 
 WebSockets use `NEXT_PUBLIC_WS_BASE_URL`, defaulting to `ws://localhost:8000`.
+
+### Production Notes
+
+Use `.env.production.example` for hosted deployments. Set `SESSION_SECRET`,
+`PUBLIC_FRONTEND_URL`, `PUBLIC_API_URL`, database URLs, and public API/WebSocket URLs before going
+live. Fresh databases seed portfolio demo content when `DEMO_CONTENT_ENABLED=true`; set it to
+`false` for tenant deployments that should start empty.
 
 ### Business Evidence Provider Notes
 
@@ -144,6 +156,16 @@ Provider secrets stay on the backend. The frontend never needs map, place-search
 ## API Highlights
 
 - `GET /health`
+- `GET /health/live`
+- `GET /health/ready`
+- `GET /api/v1/auth/config`
+- `GET /api/v1/auth/session`
+- `POST /api/v1/auth/session`
+- `POST /api/v1/auth/logout`
+- `GET /api/v1/diagnostics`
+- `GET /api/v1/diagnostics/environment`
+- `GET /api/v1/diagnostics/providers`
+- `GET /api/v1/diagnostics/dependencies`
 - `GET /api/v1/executives`
 - `POST /api/v1/startup-ideas/generate`
 - `POST /api/v1/board-meetings`
@@ -190,6 +212,9 @@ Provider secrets stay on the backend. The frontend never needs map, place-search
 
 - API contract: `docs/API.md`
 - Architecture: `docs/ARCHITECTURE.md`
+- Deployment guide: `docs/DEPLOYMENT.md`
+- Environment reference: `docs/ENVIRONMENT.md`
+- Developer guide: `docs/DEVELOPER.md`
 - Enterprise guide: `docs/ENTERPRISE.md`
 - Desktop guide: `docs/DESKTOP.md`
 - Troubleshooting: `docs/TROUBLESHOOTING.md`

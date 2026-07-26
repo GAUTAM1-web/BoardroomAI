@@ -1,6 +1,5 @@
-import { BoardroomApp } from "@/components/boardroom/boardroom-app";
+import { LandingPage } from "@/components/boardroom/landing-page";
 
 export default function HomePage() {
-  return <BoardroomApp />;
+  return <LandingPage />;
 }
-

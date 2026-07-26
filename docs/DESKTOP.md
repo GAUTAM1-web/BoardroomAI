@@ -1,6 +1,6 @@
 # Desktop Guide
 
-The desktop build wraps the existing Next.js frontend in Electron. It preserves the same API and WebSocket paths as the web application.
+The desktop build wraps the existing Next.js frontend in Electron. It opens `/workspace` and preserves the same API and WebSocket paths as the web application.
 
 ## Package
 
@@ -35,4 +35,3 @@ The desktop shell includes:
 - command palette
 - notification center
 - friendly backend recovery errors
-

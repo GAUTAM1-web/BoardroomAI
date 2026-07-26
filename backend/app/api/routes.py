@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Literal, TypeVar
 from uuid import UUID
 
+import httpx
+import redis.asyncio as redis
 import structlog
 from asyncpg import PostgresError
 from fastapi import (
@@ -11,15 +14,19 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
+    Request,
     Response,
     WebSocket,
     WebSocketDisconnect,
 )
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import ValidationError
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import get_settings
+from app.core.deployment import environment_diagnostics, is_production, redacted_provider_posture
+from app.domain.auth import auth_capabilities, create_session_payload, sign_session, verify_session
 from app.domain.boardroom.export import report_to_markdown, report_to_pdf
 from app.domain.boardroom.ideas import generate_startup_ideas
 from app.domain.boardroom.orchestrator import BoardMeetingOrchestrator
@@ -35,6 +42,13 @@ from app.domain.enterprise.security import has_permission, normalize_enterprise_
 from app.infrastructure.ai.local_provider import LocalExecutiveIntelligenceProvider
 from app.infrastructure.database.repositories import PostgresMeetingRepository
 from app.infrastructure.database.session import AsyncSessionLocal
+from app.schemas.auth import (
+    AuthConfigResponse,
+    AuthLogoutResponse,
+    AuthSessionRequest,
+    AuthSessionResponse,
+    AuthStatusResponse,
+)
 from app.schemas.boardroom import (
     BoardMeetingDetailResponse,
     BoardMeetingResponse,
@@ -148,6 +162,87 @@ async def dashboard() -> DashboardResponse:
     return DashboardResponse.model_validate(
         await with_repository(lambda repository: repository.dashboard_snapshot())
     )
+
+
+@router.get("/auth/config", response_model=AuthConfigResponse)
+async def auth_config() -> AuthConfigResponse:
+    return AuthConfigResponse.model_validate(auth_capabilities(get_settings()))
+
+
+@router.get("/auth/session", response_model=AuthStatusResponse)
+async def current_auth_session(request: Request) -> AuthStatusResponse:
+    settings = get_settings()
+    payload = verify_session(
+        _session_token_from_request(request, settings.session_cookie_name),
+        settings,
+    )
+    return AuthStatusResponse.model_validate(
+        {
+            "authenticated": payload is not None,
+            "session": payload,
+            "capabilities": auth_capabilities(settings),
+        }
+    )
+
+
+@router.post("/auth/session", response_model=AuthSessionResponse)
+async def create_auth_session(
+    payload: AuthSessionRequest,
+    response: Response,
+) -> AuthSessionResponse:
+    settings = get_settings()
+    _ensure_auth_mode_enabled(payload, settings)
+    session_payload = create_session_payload(
+        mode=payload.mode,
+        email=payload.email.strip().lower() if payload.email else None,
+        settings=settings,
+    )
+    token = sign_session(session_payload, settings)
+    response.set_cookie(
+        settings.session_cookie_name,
+        token,
+        max_age=max(300, settings.session_ttl_seconds),
+        httponly=True,
+        secure=is_production(settings),
+        samesite="lax",
+    )
+    return AuthSessionResponse.model_validate(session_payload)
+
+
+@router.post("/auth/logout", response_model=AuthLogoutResponse)
+async def logout_auth_session(response: Response) -> AuthLogoutResponse:
+    response.delete_cookie(get_settings().session_cookie_name)
+    return AuthLogoutResponse()
+
+
+@router.get("/diagnostics/environment")
+async def diagnostics_environment() -> dict[str, object]:
+    return environment_diagnostics(get_settings())
+
+
+@router.get("/diagnostics/providers")
+async def diagnostics_providers() -> dict[str, object]:
+    settings = get_settings()
+    return {
+        "providers": provider_status(settings),
+        "secrets": redacted_provider_posture(settings),
+    }
+
+
+@router.get("/diagnostics/dependencies")
+async def diagnostics_dependencies() -> dict[str, object]:
+    return await _dependency_diagnostics()
+
+
+@router.get("/diagnostics")
+async def diagnostics() -> dict[str, object]:
+    settings = get_settings()
+    dependencies = await _dependency_diagnostics()
+    return {
+        "environment": environment_diagnostics(settings),
+        "dependencies": dependencies,
+        "providers": provider_status(settings),
+    }
 
 
 @router.get("/organizations", response_model=OrganizationListResponse)
@@ -621,6 +716,76 @@ async def export_report(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename_base}.pdf"'},
     )
+
+
+def _ensure_auth_mode_enabled(payload: AuthSessionRequest, settings: object) -> None:
+    if payload.mode == "email":
+        if not getattr(settings, "auth_email_enabled", True):
+            raise HTTPException(status_code=403, detail="Email login is disabled.")
+        if not payload.email or "@" not in payload.email:
+            raise HTTPException(status_code=422, detail="A valid email address is required.")
+    if payload.mode == "demo" and not getattr(settings, "auth_demo_enabled", True):
+        raise HTTPException(status_code=403, detail="Demo account login is disabled.")
+    if payload.mode == "guest" and not getattr(settings, "auth_guest_enabled", True):
+        raise HTTPException(status_code=403, detail="Guest mode is disabled.")
+
+
+def _session_token_from_request(request: Request, cookie_name: str) -> str | None:
+    authorization = request.headers.get("authorization", "")
+    if authorization.lower().startswith("bearer "):
+        return authorization.split(" ", 1)[1].strip()
+    return request.cookies.get(cookie_name)
+
+
+async def _dependency_diagnostics() -> dict[str, object]:
+    settings = get_settings()
+    checks = [
+        await _database_check(),
+        await _redis_check(settings.redis_url),
+        await _qdrant_check(settings.qdrant_url),
+    ]
+    status = "ok" if all(item["status"] == "ok" for item in checks) else "degraded"
+    return {"status": status, "checks": checks}
+
+
+async def _database_check() -> dict[str, object]:
+    try:
+        async with AsyncSessionLocal() as session:
+            await asyncio.wait_for(session.execute(text("select 1")), timeout=3)
+        return {"name": "postgres", "status": "ok"}
+    except Exception as exc:
+        logger.warning("diagnostic_database_failed", error_type=type(exc).__name__)
+        return {"name": "postgres", "status": "degraded", "error": type(exc).__name__}
+
+
+async def _redis_check(redis_url: str) -> dict[str, object]:
+    if not redis_url:
+        return {"name": "redis", "status": "missing"}
+    client = redis.from_url(redis_url)
+    try:
+        await asyncio.wait_for(client.ping(), timeout=2)
+        return {"name": "redis", "status": "ok"}
+    except Exception as exc:
+        logger.warning("diagnostic_redis_failed", error_type=type(exc).__name__)
+        return {"name": "redis", "status": "degraded", "error": type(exc).__name__}
+    finally:
+        await client.aclose()
+
+
+async def _qdrant_check(qdrant_url: str) -> dict[str, object]:
+    if not qdrant_url:
+        return {"name": "qdrant", "status": "missing"}
+    try:
+        async with httpx.AsyncClient(timeout=2) as client:
+            response = await client.get(f"{qdrant_url.rstrip('/')}/readyz")
+        return {
+            "name": "qdrant",
+            "status": "ok" if response.status_code < 500 else "degraded",
+            "status_code": response.status_code,
+        }
+    except Exception as exc:
+        logger.warning("diagnostic_qdrant_failed", error_type=type(exc).__name__)
+        return {"name": "qdrant", "status": "degraded", "error": type(exc).__name__}
 
 
 def _business_export_payload(analysis: dict[str, object]) -> dict[str, object]:
