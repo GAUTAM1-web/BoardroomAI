@@ -1,6 +1,16 @@
 from __future__ import annotations
 
 ENTERPRISE_PERMISSIONS: dict[str, set[str]] = {
+    "owner": {
+        "meetings:create",
+        "meetings:view",
+        "meetings:edit",
+        "reports:comment",
+        "reports:export",
+        "approvals:approve",
+        "tasks:manage",
+        "workspace:admin",
+    },
     "founder": {
         "meetings:create",
         "meetings:view",
@@ -40,6 +50,15 @@ ENTERPRISE_PERMISSIONS: dict[str, set[str]] = {
         "approvals:approve",
         "tasks:manage",
     },
+    "executive": {
+        "meetings:create",
+        "meetings:view",
+        "meetings:edit",
+        "reports:comment",
+        "reports:export",
+        "approvals:approve",
+        "tasks:manage",
+    },
     "analyst": {
         "meetings:create",
         "meetings:view",
@@ -49,6 +68,9 @@ ENTERPRISE_PERMISSIONS: dict[str, set[str]] = {
     "viewer": {
         "meetings:view",
     },
+    "guest": {
+        "meetings:view",
+    },
 }
 
 
@@ -56,6 +78,8 @@ def normalize_enterprise_role(role: str | None) -> str:
     normalized = (role or "administrator").strip().lower().replace(" ", "_")
     if normalized == "admin":
         return "administrator"
+    if normalized in {"workspace_owner", "org_owner"}:
+        return "owner"
     return normalized if normalized in ENTERPRISE_PERMISSIONS else "viewer"
 
 

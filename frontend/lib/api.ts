@@ -9,7 +9,14 @@ import type {
   BusinessAnalysisSummary,
   BusinessProviderStatus,
   DashboardSnapshot,
+  EnterpriseAssistantAnswer,
   EnterpriseDashboard,
+  EnterpriseDocumentImportPayload,
+  EnterpriseDocumentImportResult,
+  EnterpriseIntelligenceSuite,
+  EnterpriseWorkflowRunPayload,
+  EnterpriseWorkflowRunResult,
+  GlobalEnterpriseSearchResults,
   GlobalSearchResults,
   MeetingSummary,
   StartupBriefPayload,
@@ -174,6 +181,72 @@ export async function fetchEnterpriseDashboard(): Promise<EnterpriseDashboard> {
   }
 }
 
+export async function fetchEnterpriseIntelligenceSuite(): Promise<EnterpriseIntelligenceSuite> {
+  try {
+    return await requestJson<EnterpriseIntelligenceSuite>(
+      `${API_PREFIX}/enterprise/intelligence-suite`,
+      {
+        cache: "no-store"
+      },
+      "Enterprise intelligence failed to load"
+    );
+  } catch (error) {
+    if (isApiStatus(error, 404)) {
+      return fetchEnterpriseIntelligenceFallback();
+    }
+    throw error;
+  }
+}
+
+export async function askEnterpriseAssistant(
+  question: string
+): Promise<EnterpriseAssistantAnswer> {
+  const data = await requestJson<{ answer: EnterpriseAssistantAnswer }>(
+    `${API_PREFIX}/enterprise/assistant`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ question })
+    },
+    "Enterprise assistant failed"
+  );
+  return data.answer;
+}
+
+export async function importEnterpriseDocument(
+  payload: EnterpriseDocumentImportPayload
+): Promise<EnterpriseDocumentImportResult> {
+  return requestJson<EnterpriseDocumentImportResult>(
+    `${API_PREFIX}/documents/import`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    },
+    "Document import failed"
+  );
+}
+
+export async function runEnterpriseWorkflow(
+  payload: EnterpriseWorkflowRunPayload
+): Promise<EnterpriseWorkflowRunResult> {
+  return requestJson<EnterpriseWorkflowRunResult>(
+    `${API_PREFIX}/workflows/run`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    },
+    "Workflow automation failed"
+  );
+}
+
 export async function fetchAuthConfig(): Promise<AuthConfig> {
   return requestJson<AuthConfig>(
     `${API_PREFIX}/auth/config`,
@@ -266,7 +339,9 @@ async function fetchEnterpriseDashboardFallback(): Promise<EnterpriseDashboard> 
   ]);
   const now = new Date().toISOString();
   const completedMeetings = meetings.filter((meeting) => meeting.status === "completed").length;
-  const recentMeetings = dashboard.recent_meetings.length ? dashboard.recent_meetings : meetings.slice(0, 8);
+  const recentMeetings = dashboard.recent_meetings.length
+    ? dashboard.recent_meetings
+    : meetings.slice(0, 8);
 
   return {
     organization: {
@@ -338,6 +413,113 @@ async function fetchEnterpriseDashboardFallback(): Promise<EnterpriseDashboard> 
   };
 }
 
+async function fetchEnterpriseIntelligenceFallback(): Promise<EnterpriseIntelligenceSuite> {
+  const dashboard = await fetchEnterpriseDashboard();
+  const recentMeetings = dashboard.recent_meetings ?? [];
+  const now = new Date().toISOString();
+  const nodes = [
+    {
+      id: "organization:legacy-default-organization",
+      type: "organization",
+      label: String(dashboard.organization.name ?? "Default Organization")
+    },
+    ...recentMeetings.slice(0, 12).map((meeting) => ({
+      id: `meeting:${meeting.meeting_id}`,
+      type: "board_meeting",
+      label: meeting.startup_idea,
+      metadata: {
+        decision: meeting.decision,
+        confidence: meeting.aggregate_confidence
+      }
+    }))
+  ];
+  const edges = recentMeetings.slice(0, 12).map((meeting) => ({
+    id: `organization:legacy-default-organization:owns_decision:meeting:${meeting.meeting_id}`,
+    source: "organization:legacy-default-organization",
+    target: `meeting:${meeting.meeting_id}`,
+    relationship: "owns_decision"
+  }));
+
+  return {
+    memory: {
+      organization_id: dashboard.organization.id,
+      executive_memory: [],
+      decision_history: {
+        total: recentMeetings.length,
+        approved_or_conditionally_approved: recentMeetings.filter((meeting) =>
+          ["approve", "approve_with_conditions"].includes(meeting.decision)
+        ).length,
+        rejected_or_deferred: recentMeetings.filter((meeting) =>
+          meeting.decision.startsWith("reject") || meeting.decision.startsWith("defer")
+        ).length,
+        recent: recentMeetings
+      },
+      confidence_history: recentMeetings.map((meeting) => ({
+        meeting_id: meeting.meeting_id,
+        confidence: meeting.aggregate_confidence,
+        decision: meeting.decision,
+        date: meeting.completed_at ?? meeting.created_at
+      })),
+      generated_at: now
+    },
+    knowledge_graph: {
+      organization_id: dashboard.organization.id,
+      nodes,
+      edges,
+      counts: {
+        nodes: nodes.length,
+        edges: edges.length,
+        meetings: recentMeetings.length,
+        business_analyses: 0,
+        knowledge_items: 0
+      },
+      generated_at: now
+    },
+    analytics: {
+      analytics: dashboard.analytics,
+      executive_dashboard: dashboard.executive_dashboard,
+      meeting_effectiveness: {
+        total_meetings: recentMeetings.length,
+        completed_meetings: recentMeetings.filter((meeting) => meeting.status === "completed")
+          .length,
+        average_confidence: dashboard.analytics.average_confidence ?? 0
+      },
+      department_scorecards: {
+        open_tasks: dashboard.tasks.length,
+        tasks_by_status: {}
+      }
+    },
+    assistant_suggestions: [
+      {
+        title: "Upgrade backend for full intelligence suite",
+        reason: "The current API is serving the compatibility enterprise dashboard.",
+        action: "Use the RC5 backend routes for memory, graph, assistant, and workflows.",
+        priority: "medium"
+      }
+    ],
+    collaboration: {
+      active_users: dashboard.users,
+      meeting_collaborators: [],
+      recent_comments: [],
+      notifications: []
+    },
+    observability: {
+      database: {
+        source: "frontend_compatibility_fallback"
+      },
+      provider_health: [],
+      recent_errors: [],
+      generated_at: now
+    },
+    workflows: {
+      available_triggers: ["manual"],
+      available_actions: ["assign_tasks", "notify_executives", "update_dashboard"],
+      email_ready: true,
+      desktop_ready: true
+    }
+  };
+}
+
 export async function fetchMeetingDetail(meetingId: string): Promise<BoardMeetingDetail> {
   return requestJson<BoardMeetingDetail>(
     `${API_PREFIX}/board-meetings/${meetingId}`,
@@ -381,6 +563,39 @@ export async function searchEverything(query: string): Promise<GlobalSearchResul
     },
     "Search failed"
   );
+}
+
+export async function fetchGlobalEnterpriseSearch(
+  query: string
+): Promise<GlobalEnterpriseSearchResults> {
+  const params = new URLSearchParams({ q: query });
+  try {
+    return await requestJson<GlobalEnterpriseSearchResults>(
+      `${API_PREFIX}/search/global?${params.toString()}`,
+      {
+        cache: "no-store"
+      },
+      "Enterprise search failed"
+    );
+  } catch (error) {
+    if (!isApiStatus(error, 404)) {
+      throw error;
+    }
+    const fallback = await searchEverything(query);
+    const collections = {
+      meetings: fallback.meetings,
+      reports: fallback.reports,
+      executives: fallback.executives
+    };
+    return {
+      ...fallback,
+      collections,
+      items: Object.entries(collections).flatMap(([collection, items]) =>
+        items.map((item) => ({ collection, ...item }))
+      ),
+      total: fallback.meetings.length + fallback.reports.length + fallback.executives.length
+    };
+  }
 }
 
 export async function fetchBusinessProviderStatus(): Promise<BusinessProviderStatus> {

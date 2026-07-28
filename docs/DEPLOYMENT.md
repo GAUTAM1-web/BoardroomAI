@@ -9,6 +9,8 @@ The production work keeps `/api/v1/*`, `/health`, and the WebSocket route stable
 - Backend: Railway, Render, Fly.io, or the `backend` Docker image.
 - Data services: managed PostgreSQL, Redis, and Qdrant for public deployments.
 - Local/portfolio demo: `docker compose up -d`.
+- Kubernetes/VPS: use the manifests under `infra/kubernetes/` with managed data services or
+  cluster-provided PostgreSQL, Redis, and Qdrant endpoints.
 
 ## Required Environment
 
@@ -30,6 +32,9 @@ NEXT_PUBLIC_WS_BASE_URL=wss://your-api.example.com
 ```
 
 Provider keys are optional. Missing providers degrade live evidence and appear in diagnostics.
+The RC5 intelligence routes do not require new secrets. Document import, workflow automation,
+executive memory, graph, assistant, and expanded search use the existing database and provider
+configuration.
 
 ## Frontend Routing
 
@@ -76,6 +81,8 @@ Diagnostics report presence and status only. Secret values are not returned.
 - `railway.toml` and `fly.toml` use `Dockerfile.backend`.
 - `render.yaml` defines backend and frontend Docker services.
 - `docker-compose.prod.yml` runs the full production-shaped stack locally or on a VM.
+- `infra/kubernetes/boardroomai.yaml` defines namespace, config, backend/frontend deployments,
+  services, and ingress for Kubernetes-ready deployments without embedding secret values.
 
 ## Release Gate
 

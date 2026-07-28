@@ -21,6 +21,11 @@ from app.domain.boardroom.models import (
 from app.domain.boardroom.roles import EXECUTIVE_PROFILES, select_executive_profiles
 from app.domain.boardroom.streaming import REPORT_SECTION_TITLES, BoardroomStreamEvent
 from app.domain.business_intelligence.service import build_business_analysis
+from app.domain.enterprise.document_intelligence import analyze_document_import
+from app.domain.enterprise.saas_intelligence import (
+    build_assistant_answer,
+    build_workflow_catalog,
+)
 from app.domain.enterprise.security import ENTERPRISE_PERMISSIONS
 from app.infrastructure.database.models import (
     ApprovalStepRecord,
@@ -991,6 +996,900 @@ class PostgresMeetingRepository:
             "acceptance_rate": analytics["success_rate"],
         }
         return {"analytics": analytics, "executive_dashboard": executive_dashboard}
+
+    async def executive_memory(
+        self,
+        role: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, object]:
+        workspace = await self.ensure_default_workspace()
+        organization_id = workspace["organization_id"]
+        stmt = (
+            select(BoardMeetingRecord)
+            .where(BoardMeetingRecord.organization_id == organization_id)
+            .options(
+                selectinload(BoardMeetingRecord.startup_brief),
+                selectinload(BoardMeetingRecord.turns),
+                selectinload(BoardMeetingRecord.votes),
+                selectinload(BoardMeetingRecord.confidence_events),
+            )
+            .order_by(BoardMeetingRecord.created_at.desc())
+            .limit(limit)
+        )
+        records = (await self.session.scalars(stmt)).unique().all()
+        normalized_role = role.strip().lower() if role else None
+        role_memory: dict[str, dict[str, object]] = {}
+        role_meetings: dict[str, set[str]] = {}
+        role_confidences: dict[str, list[float]] = {}
+        recent_decisions = []
+        confidence_history = []
+
+        for record in records:
+            meeting_key = str(record.id)
+            assessment = record.assessment or {}
+            recent_decisions.append(
+                {
+                    "meeting_id": meeting_key,
+                    "startup_idea": record.startup_brief.startup_idea,
+                    "decision": record.decision,
+                    "confidence": float(record.aggregate_confidence),
+                    "risk": assessment.get("overall_risk"),
+                    "created_at": _iso(record.created_at),
+                    "completed_at": _iso(record.completed_at),
+                    "created_by_user_id": (
+                        str(record.created_by_user_id) if record.created_by_user_id else None
+                    ),
+                }
+            )
+            confidence_history.append(
+                {
+                    "meeting_id": meeting_key,
+                    "date": _iso(record.completed_at or record.created_at),
+                    "confidence": float(record.aggregate_confidence),
+                    "decision": record.decision,
+                }
+            )
+            for vote in record.votes:
+                if normalized_role and vote.role.lower() != normalized_role:
+                    continue
+                slot = _memory_slot(role_memory, vote.role)
+                role_meetings.setdefault(vote.role, set()).add(meeting_key)
+                role_confidences.setdefault(vote.role, []).append(float(vote.confidence))
+                vote_counts = slot["vote_counts"]
+                if isinstance(vote_counts, dict):
+                    vote_counts[vote.vote] = int(vote_counts.get(vote.vote, 0)) + 1
+                if vote.vote not in {"approve", "approve_with_conditions"}:
+                    disagreements = slot["disagreements"]
+                    if isinstance(disagreements, list):
+                        disagreements.append(
+                            {
+                                "meeting_id": meeting_key,
+                                "vote": vote.vote,
+                                "rationale": vote.rationale,
+                            }
+                        )
+            for turn in record.turns:
+                if normalized_role and turn.speaker_role.lower() != normalized_role:
+                    continue
+                slot = _memory_slot(role_memory, turn.speaker_role)
+                role_meetings.setdefault(turn.speaker_role, set()).add(meeting_key)
+                recommendations = slot["recommendations"]
+                if isinstance(recommendations, list):
+                    recommendations.extend(
+                        {
+                            "meeting_id": meeting_key,
+                            "recommendation": recommendation,
+                            "confidence": float(turn.confidence),
+                            "topic": turn.topic,
+                        }
+                        for recommendation in turn.recommendations[:4]
+                    )
+                references = slot["memory_references"]
+                if isinstance(references, list):
+                    references.extend(turn.memory_references or [])
+                if turn.stance.lower() in {"cautious", "conditional", "disagree"}:
+                    disagreements = slot["disagreements"]
+                    if isinstance(disagreements, list):
+                        disagreements.append(
+                            {
+                                "meeting_id": meeting_key,
+                                "stance": turn.stance,
+                                "message": turn.message[:360],
+                            }
+                        )
+
+        executives = []
+        for executive_role, slot in sorted(role_memory.items()):
+            confidences = role_confidences.get(executive_role, [])
+            slot["meetings_seen"] = len(role_meetings.get(executive_role, set()))
+            slot["average_confidence"] = (
+                round(sum(confidences) / len(confidences), 3) if confidences else 0.0
+            )
+            slot["recommendations"] = slot["recommendations"][:12]  # type: ignore[index]
+            slot["disagreements"] = slot["disagreements"][:8]  # type: ignore[index]
+            slot["memory_references"] = sorted(set(slot["memory_references"]))[:20]  # type: ignore[arg-type]
+            executives.append(slot)
+
+        approved = [
+            item
+            for item in recent_decisions
+            if item["decision"] in {"approve", "approve_with_conditions"}
+        ]
+        rejected = [
+            item
+            for item in recent_decisions
+            if str(item["decision"]).startswith(("reject", "defer"))
+        ]
+        return {
+            "organization_id": str(organization_id),
+            "role_filter": role,
+            "executive_memory": executives,
+            "decision_history": {
+                "total": len(recent_decisions),
+                "approved_or_conditionally_approved": len(approved),
+                "rejected_or_deferred": len(rejected),
+                "recent": recent_decisions[:20],
+            },
+            "confidence_history": confidence_history[:30],
+            "generated_at": _iso(datetime.now(UTC)),
+        }
+
+    async def knowledge_graph(self, limit: int = 100) -> dict[str, object]:
+        organization, _user = await self._default_workspace_records()
+        nodes: dict[str, dict[str, object]] = {}
+        edges: list[dict[str, object]] = []
+
+        def add_node(node_id: str, node_type: str, label: str, **metadata: object) -> None:
+            nodes.setdefault(
+                node_id,
+                {
+                    "id": node_id,
+                    "type": node_type,
+                    "label": label,
+                    "metadata": self._json_details(metadata),
+                },
+            )
+
+        def add_edge(source: str, target: str, relationship: str) -> None:
+            edges.append(
+                {
+                    "id": f"{source}:{relationship}:{target}",
+                    "source": source,
+                    "target": target,
+                    "relationship": relationship,
+                }
+            )
+
+        organization_node = f"organization:{organization.id}"
+        add_node(organization_node, "organization", organization.name, slug=organization.slug)
+        for user in await self._workspace_users(organization.id):
+            node_id = f"user:{user['id']}"
+            add_node(
+                node_id,
+                "user",
+                str(user["display_name"]),
+                role=user.get("role"),
+                email=user.get("email"),
+            )
+            add_edge(organization_node, node_id, "has_member")
+
+        meetings = (
+            await self.session.scalars(
+                select(BoardMeetingRecord)
+                .where(BoardMeetingRecord.organization_id == organization.id)
+                .options(
+                    selectinload(BoardMeetingRecord.startup_brief),
+                    selectinload(BoardMeetingRecord.votes),
+                    selectinload(BoardMeetingRecord.reports),
+                )
+                .order_by(BoardMeetingRecord.created_at.desc())
+                .limit(limit)
+            )
+        ).unique().all()
+        for meeting in meetings:
+            meeting_node = f"meeting:{meeting.id}"
+            add_node(
+                meeting_node,
+                "board_meeting",
+                meeting.startup_brief.startup_idea,
+                decision=meeting.decision,
+                confidence=float(meeting.aggregate_confidence),
+            )
+            add_edge(organization_node, meeting_node, "owns_decision")
+            for vote in meeting.votes:
+                role_node = f"executive:{vote.role}"
+                add_node(role_node, "executive", vote.role, confidence=float(vote.confidence))
+                add_edge(role_node, meeting_node, f"voted_{vote.vote}")
+            for report in meeting.reports:
+                report_node = f"report:{report.id}"
+                add_node(report_node, "report", report.title, decision=report.decision)
+                add_edge(meeting_node, report_node, "produced")
+            risk_scores = (meeting.assessment or {}).get("risk_scores", {})
+            if isinstance(risk_scores, dict):
+                for risk_name, value in risk_scores.items():
+                    risk_node = f"risk:{str(risk_name).lower()}"
+                    add_node(risk_node, "risk", str(risk_name), score=value)
+                    add_edge(meeting_node, risk_node, "contains_risk")
+
+        analyses = (
+            await self.session.scalars(
+                select(BusinessAnalysisRecord)
+                .where(BusinessAnalysisRecord.organization_id == organization.id)
+                .options(
+                    selectinload(BusinessAnalysisRecord.evidence_records),
+                    selectinload(BusinessAnalysisRecord.saved_suppliers),
+                )
+                .order_by(BusinessAnalysisRecord.created_at.desc())
+                .limit(limit)
+            )
+        ).unique().all()
+        for analysis in analyses:
+            analysis_node = f"analysis:{analysis.id}"
+            add_node(
+                analysis_node,
+                "business_analysis",
+                analysis.business_idea,
+                category=analysis.business_category,
+                recommendation=analysis.recommendation_label,
+            )
+            add_edge(organization_node, analysis_node, "owns_analysis")
+            for evidence in analysis.evidence_records[:10]:
+                evidence_node = f"evidence:{evidence.id}"
+                add_node(
+                    evidence_node,
+                    "evidence",
+                    evidence.claim[:120],
+                    source_type=evidence.source_type,
+                    confidence=evidence.confidence,
+                )
+                add_edge(analysis_node, evidence_node, "uses_evidence")
+            for supplier in analysis.saved_suppliers[:10]:
+                supplier_node = f"supplier:{supplier.id}"
+                add_node(
+                    supplier_node,
+                    "supplier",
+                    supplier.name,
+                    category=supplier.category,
+                    preferred=supplier.is_preferred,
+                )
+                add_edge(analysis_node, supplier_node, "shortlists_supplier")
+
+        tasks = await self.list_tasks(limit=limit)
+        for task in tasks:
+            task_node = f"task:{task['id']}"
+            add_node(task_node, "task", str(task["title"]), status=task.get("status"))
+            add_edge(organization_node, task_node, "tracks_work")
+            if task.get("board_meeting_id"):
+                add_edge(f"meeting:{task['board_meeting_id']}", task_node, "has_task")
+            if task.get("business_analysis_id"):
+                add_edge(f"analysis:{task['business_analysis_id']}", task_node, "has_task")
+
+        knowledge_records = (
+            await self.session.scalars(
+                select(KnowledgeItemRecord)
+                .where(KnowledgeItemRecord.organization_id == organization.id)
+                .order_by(KnowledgeItemRecord.created_at.desc())
+                .limit(limit)
+            )
+        ).all()
+        for item in knowledge_records:
+            item_node = f"knowledge:{item.id}"
+            add_node(item_node, "knowledge_item", item.title, tags=item.tags)
+            add_edge(organization_node, item_node, "stores_knowledge")
+
+        return {
+            "organization_id": str(organization.id),
+            "nodes": list(nodes.values()),
+            "edges": edges[: limit * 4],
+            "counts": {
+                "nodes": len(nodes),
+                "edges": min(len(edges), limit * 4),
+                "meetings": len(meetings),
+                "business_analyses": len(analyses),
+                "knowledge_items": len(knowledge_records),
+            },
+            "generated_at": _iso(datetime.now(UTC)),
+        }
+
+    async def advanced_enterprise_analytics(self) -> dict[str, object]:
+        workspace = await self.ensure_default_workspace()
+        organization_id = workspace["organization_id"]
+        base = await self.enterprise_analytics()
+        meetings = (
+            await self.session.scalars(
+                select(BoardMeetingRecord)
+                .where(BoardMeetingRecord.organization_id == organization_id)
+                .options(
+                    selectinload(BoardMeetingRecord.turns),
+                    selectinload(BoardMeetingRecord.votes),
+                    selectinload(BoardMeetingRecord.confidence_events),
+                )
+                .order_by(BoardMeetingRecord.created_at.desc())
+                .limit(100)
+            )
+        ).unique().all()
+        analyses = (
+            await self.session.scalars(
+                select(BusinessAnalysisRecord)
+                .where(BusinessAnalysisRecord.organization_id == organization_id)
+                .options(
+                    selectinload(BusinessAnalysisRecord.performance_entries),
+                    selectinload(BusinessAnalysisRecord.saved_suppliers),
+                )
+                .order_by(BusinessAnalysisRecord.created_at.desc())
+                .limit(100)
+            )
+        ).unique().all()
+        total_meetings = len(meetings)
+        completed = [meeting for meeting in meetings if meeting.status == "completed"]
+        turn_count = sum(len(meeting.turns) for meeting in meetings)
+        confidence_values = [float(meeting.aggregate_confidence) for meeting in completed]
+
+        role_scores: dict[str, list[float]] = {}
+        role_votes: dict[str, dict[str, int]] = {}
+        for meeting in meetings:
+            for vote in meeting.votes:
+                role_scores.setdefault(vote.role, []).append(float(vote.confidence))
+                votes = role_votes.setdefault(vote.role, {})
+                votes[vote.vote] = int(votes.get(vote.vote, 0)) + 1
+
+        revenue_projection = []
+        decision_accuracy = []
+        supplier_rankings = []
+        for analysis in analyses:
+            result = analysis.result if isinstance(analysis.result, dict) else {}
+            monthly = _dict_at(result, "daily_sales", "monthly_targets")
+            target = _float_or_none(monthly.get("required_monthly_revenue"))
+            latest_entry = (
+                sorted(analysis.performance_entries, key=lambda item: item.created_at)[-1]
+                if analysis.performance_entries
+                else None
+            )
+            latest_revenue = (
+                float(latest_entry.revenue)
+                if latest_entry is not None and latest_entry.revenue is not None
+                else None
+            )
+            variance = (
+                round((latest_revenue - target) / target, 3)
+                if latest_revenue is not None and target
+                else None
+            )
+            revenue_projection.append(
+                {
+                    "analysis_id": str(analysis.id),
+                    "business_idea": analysis.business_idea,
+                    "target_monthly_revenue": target,
+                    "latest_revenue": latest_revenue,
+                    "variance_vs_target": variance,
+                    "recommendation": analysis.recommendation_label,
+                }
+            )
+            if latest_entry is not None:
+                decision_accuracy.append(
+                    {
+                        "analysis_id": str(analysis.id),
+                        "period_label": latest_entry.period_label,
+                        "recommendation": analysis.recommendation_label,
+                        "variance_vs_target": variance,
+                    }
+                )
+            for supplier in analysis.saved_suppliers:
+                supplier_rankings.append(
+                    {
+                        "supplier_id": str(supplier.id),
+                        "analysis_id": str(analysis.id),
+                        "name": supplier.name,
+                        "category": supplier.category,
+                        "distance_km": (
+                            float(supplier.distance_km)
+                            if supplier.distance_km is not None
+                            else None
+                        ),
+                        "verification_status": supplier.verification_status,
+                        "contact_status": supplier.contact_status,
+                        "is_preferred": supplier.is_preferred,
+                    }
+                )
+
+        task_rows = await self.list_tasks(limit=100)
+        task_status_counts: dict[str, int] = {}
+        for task in task_rows:
+            status = str(task.get("status") or "open")
+            task_status_counts[status] = task_status_counts.get(status, 0) + 1
+
+        confidence_evolution = [
+            {
+                "meeting_id": str(meeting.id),
+                "role": event.role,
+                "confidence": float(event.confidence),
+                "delta": float(event.delta) if event.delta is not None else None,
+                "reason": event.reason,
+                "created_at": _iso(event.created_at),
+            }
+            for meeting in meetings
+            for event in sorted(meeting.confidence_events, key=lambda item: item.sequence)
+        ][:50]
+        risk_trends = [
+            {
+                "meeting_id": str(meeting.id),
+                "decision": meeting.decision,
+                "date": _iso(meeting.completed_at or meeting.created_at),
+                "overall_risk": (meeting.assessment or {}).get("overall_risk"),
+                "risk_scores": (meeting.assessment or {}).get("risk_scores", {}),
+            }
+            for meeting in completed[:30]
+        ]
+        opportunity_tracking = [
+            {
+                "analysis_id": str(analysis.id),
+                "business_idea": analysis.business_idea,
+                "category": analysis.business_category,
+                "location": analysis.location_label,
+                "score": analysis.opportunity_score,
+                "recommendation": analysis.recommendation_label,
+                "evidence_confidence": analysis.evidence_confidence,
+                "created_at": _iso(analysis.created_at),
+            }
+            for analysis in analyses[:30]
+        ]
+
+        return {
+            **base,
+            "revenue_projection": revenue_projection[:30],
+            "risk_trends": risk_trends,
+            "meeting_effectiveness": {
+                "total_meetings": total_meetings,
+                "completed_meetings": len(completed),
+                "completion_rate": round(len(completed) / total_meetings, 3)
+                if total_meetings
+                else 0.0,
+                "consensus_rate": round(
+                    sum(1 for meeting in completed if meeting.consensus_reached) / len(completed),
+                    3,
+                )
+                if completed
+                else 0.0,
+                "average_confidence": round(sum(confidence_values) / len(confidence_values), 3)
+                if confidence_values
+                else 0.0,
+                "average_turns_per_meeting": round(turn_count / total_meetings, 2)
+                if total_meetings
+                else 0.0,
+            },
+            "executive_performance": [
+                {
+                    "role": role,
+                    "average_confidence": round(sum(values) / len(values), 3),
+                    "votes": role_votes.get(role, {}),
+                }
+                for role, values in sorted(role_scores.items())
+                if values
+            ],
+            "confidence_evolution": confidence_evolution,
+            "opportunity_tracking": opportunity_tracking,
+            "department_scorecards": {
+                "open_tasks": task_status_counts.get("open", 0)
+                + task_status_counts.get("in_progress", 0),
+                "tasks_by_status": task_status_counts,
+                "departments": [
+                    self._department_dict(record)
+                    for record in (
+                        await self.session.scalars(
+                            select(EnterpriseDepartmentRecord)
+                            .where(EnterpriseDepartmentRecord.organization_id == organization_id)
+                            .order_by(EnterpriseDepartmentRecord.name.asc())
+                        )
+                    ).all()
+                ],
+            },
+            "decision_accuracy": decision_accuracy[:30],
+            "supplier_rankings": sorted(
+                supplier_rankings,
+                key=lambda item: (
+                    not bool(item["is_preferred"]),
+                    item["distance_km"] is None,
+                    item["distance_km"] or 999999,
+                ),
+            )[:30],
+        }
+
+    async def global_enterprise_search(
+        self,
+        query: str,
+        limit: int = 20,
+    ) -> dict[str, object]:
+        workspace = await self.ensure_default_workspace()
+        organization_id = workspace["organization_id"]
+        base = await self.global_search(query, limit=limit)
+        pattern = f"%{query.strip()}%"
+        tasks = (
+            await self.session.scalars(
+                select(EnterpriseTaskRecord)
+                .where(
+                    EnterpriseTaskRecord.organization_id == organization_id,
+                    or_(
+                        EnterpriseTaskRecord.title.ilike(pattern),
+                        EnterpriseTaskRecord.description.ilike(pattern),
+                        EnterpriseTaskRecord.source.ilike(pattern),
+                        EnterpriseTaskRecord.status.ilike(pattern),
+                    ),
+                )
+                .order_by(EnterpriseTaskRecord.created_at.desc())
+                .limit(limit)
+            )
+        ).all()
+        analyses = (
+            await self.session.scalars(
+                select(BusinessAnalysisRecord)
+                .where(
+                    BusinessAnalysisRecord.organization_id == organization_id,
+                    or_(
+                        BusinessAnalysisRecord.business_idea.ilike(pattern),
+                        BusinessAnalysisRecord.business_category.ilike(pattern),
+                        BusinessAnalysisRecord.location_label.ilike(pattern),
+                        BusinessAnalysisRecord.recommendation_label.ilike(pattern),
+                        cast(BusinessAnalysisRecord.result, String).ilike(pattern),
+                    ),
+                )
+                .order_by(BusinessAnalysisRecord.created_at.desc())
+                .limit(limit)
+            )
+        ).all()
+        evidence_rows = (
+            await self.session.execute(
+                select(BusinessEvidenceRecord, BusinessAnalysisRecord)
+                .join(BusinessAnalysisRecord)
+                .where(
+                    BusinessAnalysisRecord.organization_id == organization_id,
+                    or_(
+                        BusinessEvidenceRecord.claim.ilike(pattern),
+                        BusinessEvidenceRecord.source_name.ilike(pattern),
+                        BusinessEvidenceRecord.source_type.ilike(pattern),
+                        cast(BusinessEvidenceRecord.tags, String).ilike(pattern),
+                    ),
+                )
+                .order_by(BusinessEvidenceRecord.retrieval_time.desc())
+                .limit(limit)
+            )
+        ).all()
+        supplier_rows = (
+            await self.session.execute(
+                select(SavedSupplierRecord, BusinessAnalysisRecord)
+                .join(BusinessAnalysisRecord)
+                .where(
+                    BusinessAnalysisRecord.organization_id == organization_id,
+                    or_(
+                        SavedSupplierRecord.name.ilike(pattern),
+                        SavedSupplierRecord.category.ilike(pattern),
+                        SavedSupplierRecord.location_label.ilike(pattern),
+                        SavedSupplierRecord.verification_status.ilike(pattern),
+                        cast(SavedSupplierRecord.supplier_data, String).ilike(pattern),
+                    ),
+                )
+                .order_by(SavedSupplierRecord.created_at.desc())
+                .limit(limit)
+            )
+        ).all()
+        user_rows = (
+            await self.session.execute(
+                select(EnterpriseUserRecord, EnterpriseMembershipRecord)
+                .join(
+                    EnterpriseMembershipRecord,
+                    EnterpriseMembershipRecord.user_id == EnterpriseUserRecord.id,
+                )
+                .where(
+                    EnterpriseMembershipRecord.organization_id == organization_id,
+                    or_(
+                        EnterpriseUserRecord.display_name.ilike(pattern),
+                        EnterpriseUserRecord.email.ilike(pattern),
+                        EnterpriseMembershipRecord.role.ilike(pattern),
+                    ),
+                )
+                .order_by(EnterpriseUserRecord.display_name.asc())
+                .limit(limit)
+            )
+        ).all()
+        knowledge = await self.search_knowledge(query, limit=limit)
+        collections = {
+            "meetings": base["meetings"],
+            "reports": base["reports"],
+            "executives": base["executives"],
+            "tasks": [await self._task_dict(task) for task in tasks],
+            "business_analyses": [self._business_analysis_summary(record) for record in analyses],
+            "evidence": [
+                {
+                    "id": str(evidence.id),
+                    "analysis_id": str(analysis.id),
+                    "claim": evidence.claim,
+                    "source_name": evidence.source_name,
+                    "source_type": evidence.source_type,
+                    "confidence": evidence.confidence,
+                    "tags": evidence.tags,
+                    "created_at": _iso(evidence.retrieval_time),
+                }
+                for evidence, analysis in evidence_rows
+            ],
+            "suppliers": [
+                {
+                    "id": str(supplier.id),
+                    "analysis_id": str(analysis.id),
+                    "name": supplier.name,
+                    "category": supplier.category,
+                    "location_label": supplier.location_label,
+                    "verification_status": supplier.verification_status,
+                    "is_preferred": supplier.is_preferred,
+                    "created_at": _iso(supplier.created_at),
+                }
+                for supplier, analysis in supplier_rows
+            ],
+            "knowledge": knowledge,
+            "users": [
+                {
+                    **self._user_dict(user),
+                    "role": membership.role,
+                    "team_id": str(membership.team_id) if membership.team_id else None,
+                }
+                for user, membership in user_rows
+            ],
+        }
+        flattened = [
+            {"collection": collection, **item}
+            for collection, items in collections.items()
+            for item in items
+            if isinstance(item, dict)
+        ][: limit * 4]
+        return {
+            **base,
+            "collections": collections,
+            "items": flattened,
+            "total": sum(len(items) for items in collections.values()),
+        }
+
+    async def assistant_answer(self, question: str) -> dict[str, object]:
+        search_results = await self.global_enterprise_search(question, limit=8)
+        memory = await self.executive_memory(limit=20)
+        analytics = await self.advanced_enterprise_analytics()
+        return build_assistant_answer(question, search_results, memory, analytics)
+
+    async def observability_snapshot(self) -> dict[str, object]:
+        workspace = await self.ensure_default_workspace()
+        organization_id = workspace["organization_id"]
+        audits = await self.audit_log(limit=30)
+        errors = [
+            audit
+            for audit in audits
+            if "error" in str(audit.get("action", "")).lower()
+            or "failed" in str(audit.get("action", "")).lower()
+        ]
+        return {
+            "database": {
+                "organization_id": str(organization_id),
+                "organizations": await self._count(EnterpriseOrganizationRecord),
+                "users": await self._count(EnterpriseUserRecord),
+                "meetings": await self._count(BoardMeetingRecord),
+                "business_analyses": await self._count(BusinessAnalysisRecord),
+                "knowledge_items": await self._count(KnowledgeItemRecord),
+                "audit_events": await self._count(AuditEventRecord),
+            },
+            "recent_errors": errors[:10],
+            "recent_audit_events": audits[:10],
+            "security": {
+                "role_checks": True,
+                "audit_logging": True,
+                "secure_exports": True,
+                "secret_redaction": True,
+            },
+            "generated_at": _iso(datetime.now(UTC)),
+        }
+
+    async def collaboration_presence(self, limit: int = 30) -> dict[str, object]:
+        workspace = await self.ensure_default_workspace()
+        organization_id = workspace["organization_id"]
+        collaborator_rows = (
+            await self.session.execute(
+                select(MeetingCollaboratorRecord, EnterpriseUserRecord, BoardMeetingRecord)
+                .join(
+                    EnterpriseUserRecord,
+                    MeetingCollaboratorRecord.user_id == EnterpriseUserRecord.id,
+                )
+                .join(
+                    BoardMeetingRecord,
+                    MeetingCollaboratorRecord.board_meeting_id == BoardMeetingRecord.id,
+                )
+                .where(BoardMeetingRecord.organization_id == organization_id)
+                .order_by(MeetingCollaboratorRecord.joined_at.desc())
+                .limit(limit)
+            )
+        ).all()
+        comments = (
+            await self.session.scalars(
+                select(ReportCommentRecord)
+                .where(ReportCommentRecord.organization_id == organization_id)
+                .order_by(ReportCommentRecord.created_at.desc())
+                .limit(limit)
+            )
+        ).all()
+        users = await self._workspace_users(organization_id)
+        return {
+            "active_users": users,
+            "meeting_collaborators": [
+                {
+                    "meeting_id": str(meeting.id),
+                    "collaborator": self._collaborator_dict(collaborator, user),
+                    "decision": meeting.decision,
+                }
+                for collaborator, user, meeting in collaborator_rows
+            ],
+            "recent_comments": [await self._comment_dict(comment) for comment in comments],
+            "notifications": await self.list_notifications(limit=limit),
+            "generated_at": _iso(datetime.now(UTC)),
+        }
+
+    async def import_document(self, payload: dict[str, object]) -> dict[str, object] | None:
+        organization, user = await self._default_workspace_records()
+        meeting_id = _uuid_or_none(payload.get("meeting_id"))
+        business_analysis_id = _uuid_or_none(payload.get("business_analysis_id"))
+        meeting_exists = (
+            await self.session.get(BoardMeetingRecord, meeting_id)
+            if meeting_id is not None
+            else None
+        )
+        if meeting_id is not None and meeting_exists is None:
+            return None
+        if (
+            business_analysis_id is not None
+            and await self.session.get(BusinessAnalysisRecord, business_analysis_id) is None
+        ):
+            return None
+        document = analyze_document_import(payload)
+        source_id = meeting_id or business_analysis_id
+        knowledge = KnowledgeItemRecord(
+            id=uuid4(),
+            organization_id=organization.id,
+            title=str(document["filename"]),
+            item_type="document",
+            source_type="document_import",
+            source_id=source_id,
+            content=str(document["extracted_text"] or document["summary"]),
+            tags=list(document["tags"]),
+        )
+        self.session.add(knowledge)
+        self._add_audit_event(
+            organization.id,
+            user.id,
+            "document.imported",
+            "document",
+            knowledge.id,
+            {
+                "filename": document["filename"],
+                "classification": document["classification"],
+                "extraction_status": document["extraction_status"],
+                "meeting_id": str(meeting_id) if meeting_id else None,
+                "business_analysis_id": str(business_analysis_id)
+                if business_analysis_id
+                else None,
+            },
+        )
+        await self.session.commit()
+        document["knowledge_item_id"] = str(knowledge.id)
+        return document
+
+    async def run_workflow(self, payload: dict[str, object]) -> dict[str, object] | None:
+        organization, user = await self._default_workspace_records()
+        meeting_id = _uuid_or_none(payload.get("meeting_id"))
+        business_analysis_id = _uuid_or_none(payload.get("business_analysis_id"))
+        meeting = (
+            await self.session.scalar(
+                select(BoardMeetingRecord)
+                .where(BoardMeetingRecord.id == meeting_id)
+                .options(selectinload(BoardMeetingRecord.startup_brief))
+            )
+            if meeting_id
+            else None
+        )
+        analysis = (
+            await self.session.get(BusinessAnalysisRecord, business_analysis_id)
+            if business_analysis_id
+            else None
+        )
+        if meeting_id is not None and meeting is None:
+            return None
+        if business_analysis_id is not None and analysis is None:
+            return None
+
+        workflow_id = uuid4()
+        actions = [str(action) for action in payload.get("actions") or []]
+        executed: list[dict[str, object]] = []
+        skipped: list[dict[str, object]] = []
+        for action in actions:
+            if action == "assign_tasks":
+                task = EnterpriseTaskRecord(
+                    organization_id=organization.id,
+                    board_meeting_id=meeting_id,
+                    business_analysis_id=business_analysis_id,
+                    assignee_user_id=user.id,
+                    title=_workflow_task_title(meeting, analysis),
+                    description="Generated from enterprise workflow automation.",
+                    source="workflow_automation",
+                    status="open",
+                    due_at=datetime.now(UTC) + timedelta(days=7),
+                )
+                self.session.add(task)
+                executed.append({"action": action, "task_title": task.title})
+            elif action == "notify_executives":
+                self.session.add(
+                    EnterpriseNotificationRecord(
+                        organization_id=organization.id,
+                        user_id=user.id,
+                        channel="in_app",
+                        title="Workflow automation completed",
+                        body=f"{payload.get('trigger', 'manual')} workflow produced updates.",
+                        status="unread",
+                    )
+                )
+                executed.append({"action": action, "channel": "in_app"})
+            elif action == "export_pdf":
+                if meeting_id:
+                    executed.append(
+                        {
+                            "action": action,
+                            "url": f"/api/v1/reports/{meeting_id}/export?format=pdf",
+                        }
+                    )
+                elif business_analysis_id:
+                    executed.append(
+                        {
+                            "action": action,
+                            "url": (
+                                f"/api/v1/business-analyses/{business_analysis_id}"
+                                "/export?format=pdf"
+                            ),
+                        }
+                    )
+                else:
+                    skipped.append({"action": action, "reason": "No exportable entity supplied."})
+            elif action == "archive_decision":
+                archive = KnowledgeItemRecord(
+                    organization_id=organization.id,
+                    title=_workflow_archive_title(meeting, analysis),
+                    item_type="decision_archive",
+                    source_type="workflow_automation",
+                    source_id=meeting_id or business_analysis_id,
+                    content=_workflow_archive_content(meeting, analysis),
+                    tags=["workflow", "decision_history"],
+                )
+                self.session.add(archive)
+                executed.append({"action": action, "knowledge_title": archive.title})
+            elif action in {"generate_report", "update_dashboard"}:
+                executed.append({"action": action, "status": "available_from_existing_records"})
+            else:
+                skipped.append({"action": action, "reason": "Action is not registered."})
+
+        self._add_audit_event(
+            organization.id,
+            user.id,
+            "workflow.run",
+            "workflow",
+            workflow_id,
+            {
+                "trigger": payload.get("trigger"),
+                "actions": actions,
+                "executed": executed,
+                "skipped": skipped,
+            },
+        )
+        await self.session.commit()
+        return {
+            "id": str(workflow_id),
+            "trigger": payload.get("trigger"),
+            "meeting_id": str(meeting_id) if meeting_id else None,
+            "business_analysis_id": str(business_analysis_id) if business_analysis_id else None,
+            "executed": executed,
+            "skipped": skipped,
+            "catalog": build_workflow_catalog(),
+            "created_at": _iso(datetime.now(UTC)),
+        }
 
     async def admin_panel(self) -> dict[str, object]:
         workspace = await self.ensure_default_workspace()
@@ -2437,3 +3336,91 @@ def _parse_datetime(value: str) -> datetime:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return datetime.now(UTC)
+
+
+def _memory_slot(
+    slots: dict[str, dict[str, object]],
+    role: str,
+) -> dict[str, object]:
+    return slots.setdefault(
+        role,
+        {
+            "role": role,
+            "meetings_seen": 0,
+            "average_confidence": 0.0,
+            "vote_counts": {},
+            "recommendations": [],
+            "disagreements": [],
+            "memory_references": [],
+        },
+    )
+
+
+def _dict_at(value: dict[str, object], *keys: str) -> dict[str, object]:
+    current: object = value
+    for key in keys:
+        if not isinstance(current, dict):
+            return {}
+        current = current.get(key)
+    return current if isinstance(current, dict) else {}
+
+
+def _float_or_none(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _uuid_or_none(value: object) -> UUID | None:
+    if value is None:
+        return None
+    if isinstance(value, UUID):
+        return value
+    try:
+        return UUID(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _workflow_task_title(
+    meeting: BoardMeetingRecord | None,
+    analysis: BusinessAnalysisRecord | None,
+) -> str:
+    if analysis is not None:
+        return f"Validate recommendation: {analysis.business_idea}"[:220]
+    if meeting is not None and meeting.startup_brief is not None:
+        return f"Follow up board decision: {meeting.startup_brief.startup_idea}"[:220]
+    return "Review enterprise workflow output"
+
+
+def _workflow_archive_title(
+    meeting: BoardMeetingRecord | None,
+    analysis: BusinessAnalysisRecord | None,
+) -> str:
+    if analysis is not None:
+        return f"Decision archive: {analysis.business_idea}"[:220]
+    if meeting is not None and meeting.startup_brief is not None:
+        return f"Decision archive: {meeting.startup_brief.startup_idea}"[:220]
+    return "Decision archive"
+
+
+def _workflow_archive_content(
+    meeting: BoardMeetingRecord | None,
+    analysis: BusinessAnalysisRecord | None,
+) -> str:
+    if analysis is not None:
+        return (
+            f"Business analysis {analysis.id} recorded recommendation "
+            f"{analysis.recommendation_label} with opportunity score "
+            f"{analysis.opportunity_score} and evidence confidence "
+            f"{analysis.evidence_confidence}."
+        )
+    if meeting is not None:
+        return (
+            f"Board meeting {meeting.id} recorded decision {meeting.decision} "
+            f"with aggregate confidence {float(meeting.aggregate_confidence):.3f}."
+        )
+    return "Workflow archived a decision event without a linked meeting or analysis."

@@ -104,6 +104,64 @@ class EnterpriseAnalyticsResponse(BaseModel):
     executive_dashboard: dict[str, Any]
 
 
+class EnterpriseIntelligenceResponse(BaseModel):
+    memory: dict[str, Any]
+    knowledge_graph: dict[str, Any]
+    analytics: dict[str, Any]
+    assistant_suggestions: list[dict[str, Any]]
+    collaboration: dict[str, Any]
+    observability: dict[str, Any]
+    workflows: dict[str, Any]
+
+
+class AssistantQuestionRequest(BaseModel):
+    question: str = Field(min_length=2, max_length=1000)
+
+
+class AssistantAnswerResponse(BaseModel):
+    answer: dict[str, Any]
+
+
+class DocumentImportRequest(BaseModel):
+    filename: str = Field(min_length=1, max_length=240)
+    content_base64: str = Field(min_length=1, max_length=20_000_000)
+    mime_type: str | None = Field(default=None, max_length=160)
+    meeting_id: UUID | None = None
+    business_analysis_id: UUID | None = None
+    tags: list[str] = Field(default_factory=list, max_length=30)
+
+
+class DocumentImportResponse(BaseModel):
+    document: dict[str, Any]
+
+
+class WorkflowRunRequest(BaseModel):
+    trigger: Literal["meeting.completed", "business_analysis.created", "manual"] = "manual"
+    meeting_id: UUID | None = None
+    business_analysis_id: UUID | None = None
+    actions: list[
+        Literal[
+            "generate_report",
+            "assign_tasks",
+            "notify_executives",
+            "export_pdf",
+            "archive_decision",
+            "update_dashboard",
+        ]
+    ] = Field(
+        default_factory=lambda: [
+            "assign_tasks",
+            "notify_executives",
+            "update_dashboard",
+        ],
+        max_length=8,
+    )
+
+
+class WorkflowRunResponse(BaseModel):
+    workflow: dict[str, Any]
+
+
 class AdminPanelResponse(BaseModel):
     users: list[dict[str, Any]]
     organizations: list[dict[str, Any]]

@@ -6,7 +6,7 @@ Milestone 5 expands the product into an evidence-based business decision platfor
 
 Milestone 6 upgrades the board itself into an evidence-first executive intelligence layer with permanent executive personalities, dynamic meeting modes, devil's advocate review, confidence timelines, replayable decisions, and final decision briefs. Executive Intelligence Engine V2 adds silent internal research, a staged reasoning pipeline, debate trees, confidence propagation, counterfactuals, scenario simulation, cognitive-bias detection, AI reflection, and a decision journal.
 
-Milestone 8 adds the enterprise workspace layer: default organizations, departments, teams, users, role permissions, comments, approvals, tasks, calendar events, notifications, knowledge search, templates, analytics, admin diagnostics, and audit logging. Milestone 10 polishes the product shell with a command palette, notification center, richer loading/empty/error states, offline awareness, a help center, and a clearer live-meeting progress experience. Milestone 11 adds a real-world intelligence layer with optional maps, places, weather, news, currency, government/open-data, and demographics providers. Milestone 12 adds the production shell: public landing page, workspace auth gate, demo account, idempotent demo seed, cloud/Docker deployment manifests, diagnostics, security headers, and environment validation.
+Milestone 8 adds the enterprise workspace layer: default organizations, departments, teams, users, role permissions, comments, approvals, tasks, calendar events, notifications, knowledge search, templates, analytics, admin diagnostics, and audit logging. Milestone 10 polishes the product shell with a command palette, notification center, richer loading/empty/error states, offline awareness, a help center, and a clearer live-meeting progress experience. Milestone 11 adds a real-world intelligence layer with optional maps, places, weather, news, currency, government/open-data, and demographics providers. Milestone 12 adds the production shell: public landing page, workspace auth gate, demo account, idempotent demo seed, cloud/Docker deployment manifests, diagnostics, security headers, and environment validation. Milestone 13 adds the global enterprise SaaS layer: executive memory, knowledge graph, advanced analytics, assistant, document intelligence, workflow automation, expanded search, observability, and an Intelligence workspace tab.
 
 ## Current Capabilities
 
@@ -24,6 +24,7 @@ Milestone 8 adds the enterprise workspace layer: default organizations, departme
 - Export support for PDF, Markdown, and JSON.
 - Professional Settings workspace with provider status, maps status, redacted API-key posture, theme preference, data-mode status, export defaults, and client diagnostics.
 - Enterprise workspace with organizations, departments, teams, role-scoped permissions, approvals, tasks, calendar reviews, audit activity, templates, knowledge search, analytics, and admin diagnostics.
+- Global Enterprise Intelligence workspace with executive memory, decision history, graph nodes, advanced analytics, assistant answers grounded in stored records, document import/classification, workflow automation, collaboration presence, expanded search, and observability.
 - Product polish layer with Ctrl+K command palette, notification center, friendly recovery errors, offline detection, skeleton loading states, guided first-run help, and improved live meeting progress.
 - Evidence-based "Decide" workspace for local shops, service businesses, existing businesses, candidate properties, and startup concepts.
 - Optional location flow with manual entry, current-location permission only after user action, map-pin coordinate support, and no background tracking.
@@ -151,7 +152,8 @@ Provider secrets stay on the backend. The frontend never needs map, place-search
 5. Watch the live executive discussion, vote changes, confidence evolution, risk signals, and report stream.
 6. Open History to search meetings, favorite startups, compare decisions, preview reports, relaunch a brief, delete history, or export artifacts.
 7. Open Enterprise to review approvals, tasks, calendar events, audit trail activity, organization metrics, and executive signals.
-8. Press `Ctrl+K` to jump between major workflows, start a demo meeting, or reuse recent searches.
+8. Open Intelligence to inspect executive memory, graph links, assistant answers, document imports, workflow automation, provider health, and collaboration activity.
+9. Press `Ctrl+K` to jump between major workflows, start a demo meeting, or reuse recent searches.
 
 ## API Highlights
 
@@ -178,8 +180,18 @@ Provider secrets stay on the backend. The frontend never needs map, place-search
 - `POST /api/v1/organizations`
 - `GET /api/v1/enterprise/dashboard`
 - `GET /api/v1/enterprise/analytics`
+- `GET /api/v1/enterprise/intelligence-suite`
+- `GET /api/v1/enterprise/executive-memory`
+- `GET /api/v1/enterprise/knowledge-graph`
+- `GET /api/v1/enterprise/advanced-analytics`
+- `POST /api/v1/enterprise/assistant`
 - `GET /api/v1/enterprise/admin`
 - `GET /api/v1/enterprise/audit`
+- `GET /api/v1/search/global?q=...`
+- `POST /api/v1/documents/import`
+- `GET /api/v1/collaboration/presence`
+- `POST /api/v1/workflows/run`
+- `GET /api/v1/observability`
 - `GET /api/v1/report-templates`
 - `GET /api/v1/knowledge/search?q=...`
 - `GET /api/v1/tasks`
@@ -216,6 +228,7 @@ Provider secrets stay on the backend. The frontend never needs map, place-search
 - Environment reference: `docs/ENVIRONMENT.md`
 - Developer guide: `docs/DEVELOPER.md`
 - Enterprise guide: `docs/ENTERPRISE.md`
+- RC5 release report: `docs/RELEASE_RC5.md`
 - Desktop guide: `docs/DESKTOP.md`
 - Troubleshooting: `docs/TROUBLESHOOTING.md`
 

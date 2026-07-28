@@ -131,6 +131,56 @@ export type EnterpriseDashboard = {
   executive_dashboard: Record<string, unknown>;
 };
 
+export type EnterpriseIntelligenceSuite = {
+  memory: Record<string, unknown>;
+  knowledge_graph: Record<string, unknown>;
+  analytics: Record<string, unknown>;
+  assistant_suggestions: Array<Record<string, unknown>>;
+  collaboration: Record<string, unknown>;
+  observability: Record<string, unknown>;
+  workflows: Record<string, unknown>;
+};
+
+export type EnterpriseAssistantAnswer = {
+  question: string;
+  answer: string;
+  source_count: number;
+  sources: Array<Record<string, unknown>>;
+  recommended_actions: string[];
+  limitations: string[];
+  generated_at: string;
+};
+
+export type EnterpriseDocumentImportPayload = {
+  filename: string;
+  content_base64: string;
+  mime_type?: string;
+  meeting_id?: string;
+  business_analysis_id?: string;
+  tags?: string[];
+};
+
+export type EnterpriseDocumentImportResult = {
+  document: Record<string, unknown>;
+};
+
+export type EnterpriseWorkflowRunPayload = {
+  trigger: "meeting.completed" | "business_analysis.created" | "manual";
+  meeting_id?: string;
+  business_analysis_id?: string;
+  actions: string[];
+};
+
+export type EnterpriseWorkflowRunResult = {
+  workflow: Record<string, unknown>;
+};
+
+export type GlobalEnterpriseSearchResults = GlobalSearchResults & {
+  collections: Record<string, Array<Record<string, unknown>>>;
+  items: Array<Record<string, unknown>>;
+  total: number;
+};
+
 export type AuthMode = "email" | "demo" | "guest";
 
 export type AuthUser = {

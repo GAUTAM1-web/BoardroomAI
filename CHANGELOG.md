@@ -2,6 +2,11 @@
 
 ## 1.0.0-rc.1
 
+- Added Global Enterprise SaaS RC5 intelligence APIs for executive memory, knowledge graph, advanced analytics, enterprise assistant, document import, workflow automation, collaboration presence, expanded search, and observability.
+- Added an Intelligence workspace tab with grounded assistant answers, global enterprise search, document import, workflow automation, graph/memory previews, collaboration activity, and provider health.
+- Added Owner, Executive, and Guest role handling while preserving Founder, CEO, Administrator, Manager, Analyst, and Viewer behavior.
+- Added local document intelligence for text, Markdown, CSV, JSON, Office Open XML, best-effort PDF text, metadata-only image handling, knowledge-item storage, and audit logging.
+- Added Kubernetes deployment scaffold under `infra/kubernetes/` and RC5 release documentation.
 - Added production deployment readiness with public landing page, `/workspace` shell, demo account, guest mode, email session creation, secure logout, OAuth-ready Google config, and HTTP-only session cookies.
 - Added idempotent portfolio demo seed for fresh default workspaces, including a sample meeting, report, approval workflow, tasks, notification, templates, knowledge, calendar review, and business analysis.
 - Added liveness/readiness checks, redacted environment diagnostics, dependency diagnostics, provider diagnostics, security headers, rate limiting, and deployment target detection.

@@ -38,6 +38,10 @@ from app.domain.business_intelligence.service import (
     clear_live_data_cache,
     provider_status,
 )
+from app.domain.enterprise.saas_intelligence import (
+    build_intelligence_suggestions,
+    build_workflow_catalog,
+)
 from app.domain.enterprise.security import has_permission, normalize_enterprise_role
 from app.infrastructure.ai.local_provider import LocalExecutiveIntelligenceProvider
 from app.infrastructure.database.repositories import PostgresMeetingRepository
@@ -77,13 +81,18 @@ from app.schemas.enterprise import (
     ApprovalCreateRequest,
     ApprovalDecisionRequest,
     ApprovalResponse,
+    AssistantAnswerResponse,
+    AssistantQuestionRequest,
     CollaboratorJoinRequest,
     CommentCreateRequest,
     CommentResolveRequest,
     CommentsResponse,
+    DocumentImportRequest,
+    DocumentImportResponse,
     EnterpriseAnalyticsResponse,
     EnterpriseCollectionResponse,
     EnterpriseDashboardResponse,
+    EnterpriseIntelligenceResponse,
     OrganizationCreateRequest,
     OrganizationListResponse,
     OrganizationResponse,
@@ -91,6 +100,8 @@ from app.schemas.enterprise import (
     TaskListResponse,
     TaskResponse,
     TaskUpdateRequest,
+    WorkflowRunRequest,
+    WorkflowRunResponse,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["boardroom"])
@@ -120,6 +131,21 @@ def require_enterprise_permission(role: str | None, permission: str) -> str:
             detail=f"Role '{role or 'Administrator'}' cannot perform '{permission}'.",
         )
     return normalize_enterprise_role(role)
+
+
+def _provider_health_rows(snapshot: dict[str, object]) -> list[dict[str, object]]:
+    providers = snapshot.get("providers", {})
+    if isinstance(providers, dict):
+        rows = []
+        for name, data in providers.items():
+            if isinstance(data, dict):
+                rows.append({"name": str(name), **data})
+            else:
+                rows.append({"name": str(name), "status": str(data)})
+        return rows
+    if isinstance(providers, list):
+        return [item for item in providers if isinstance(item, dict)]
+    return []
 
 
 @router.get("/executives", response_model=ExecutiveCatalogResponse)
@@ -286,6 +312,77 @@ async def enterprise_analytics(
     )
 
 
+@router.get("/enterprise/intelligence-suite", response_model=EnterpriseIntelligenceResponse)
+async def enterprise_intelligence_suite(
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> EnterpriseIntelligenceResponse:
+    require_enterprise_permission(role, "meetings:view")
+
+    async def operation(repository: PostgresMeetingRepository) -> dict[str, object]:
+        memory = await repository.executive_memory(limit=50)
+        graph = await repository.knowledge_graph(limit=80)
+        analytics = await repository.advanced_enterprise_analytics()
+        collaboration = await repository.collaboration_presence(limit=12)
+        observability = await repository.observability_snapshot()
+        provider_snapshot = provider_status(get_settings())
+        observability["provider_health"] = _provider_health_rows(provider_snapshot)
+        observability["provider_cache"] = provider_snapshot.get("cache")
+        return {
+            "memory": memory,
+            "knowledge_graph": graph,
+            "analytics": analytics,
+            "assistant_suggestions": build_intelligence_suggestions(
+                memory,
+                analytics,
+                observability,
+            ),
+            "collaboration": collaboration,
+            "observability": observability,
+            "workflows": build_workflow_catalog(),
+        }
+
+    return EnterpriseIntelligenceResponse.model_validate(await with_repository(operation))
+
+
+@router.get("/enterprise/executive-memory")
+async def enterprise_executive_memory(
+    executive_role: str | None = Query(default=None, max_length=120),
+    limit: int = Query(default=50, ge=1, le=100),
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> dict[str, object]:
+    require_enterprise_permission(role, "meetings:view")
+    return await with_repository(
+        lambda repository: repository.executive_memory(role=executive_role, limit=limit)
+    )
+
+
+@router.get("/enterprise/knowledge-graph")
+async def enterprise_knowledge_graph(
+    limit: int = Query(default=100, ge=10, le=200),
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> dict[str, object]:
+    require_enterprise_permission(role, "meetings:view")
+    return await with_repository(lambda repository: repository.knowledge_graph(limit=limit))
+
+
+@router.get("/enterprise/advanced-analytics")
+async def enterprise_advanced_analytics(
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> dict[str, object]:
+    require_enterprise_permission(role, "meetings:view")
+    return await with_repository(lambda repository: repository.advanced_enterprise_analytics())
+
+
+@router.post("/enterprise/assistant", response_model=AssistantAnswerResponse)
+async def enterprise_assistant(
+    payload: AssistantQuestionRequest,
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> AssistantAnswerResponse:
+    require_enterprise_permission(role, "meetings:view")
+    answer = await with_repository(lambda repository: repository.assistant_answer(payload.question))
+    return AssistantAnswerResponse.model_validate({"answer": answer})
+
+
 @router.get("/enterprise/admin", response_model=AdminPanelResponse)
 async def enterprise_admin_panel(
     role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
@@ -324,6 +421,71 @@ async def knowledge_search(
     require_enterprise_permission(role, "meetings:view")
     items = await with_repository(lambda repository: repository.search_knowledge(q, limit=limit))
     return EnterpriseCollectionResponse.model_validate({"items": items})
+
+
+@router.get("/search/global")
+async def global_enterprise_search(
+    q: str = Query(min_length=1, max_length=240),
+    limit: int = Query(default=20, ge=1, le=50),
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> dict[str, object]:
+    require_enterprise_permission(role, "meetings:view")
+    return await with_repository(
+        lambda repository: repository.global_enterprise_search(q, limit=limit)
+    )
+
+
+@router.post("/documents/import", response_model=DocumentImportResponse)
+async def import_enterprise_document(
+    payload: DocumentImportRequest,
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> DocumentImportResponse:
+    require_enterprise_permission(role, "reports:comment")
+    try:
+        document = await with_repository(
+            lambda repository: repository.import_document(payload.model_dump(mode="json"))
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if document is None:
+        raise HTTPException(status_code=404, detail="Linked meeting or analysis was not found.")
+    return DocumentImportResponse.model_validate({"document": document})
+
+
+@router.get("/collaboration/presence")
+async def collaboration_presence(
+    limit: int = Query(default=30, ge=1, le=100),
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> dict[str, object]:
+    require_enterprise_permission(role, "meetings:view")
+    return await with_repository(lambda repository: repository.collaboration_presence(limit=limit))
+
+
+@router.post("/workflows/run", response_model=WorkflowRunResponse)
+async def run_enterprise_workflow(
+    payload: WorkflowRunRequest,
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> WorkflowRunResponse:
+    require_enterprise_permission(role, "tasks:manage")
+    workflow = await with_repository(
+        lambda repository: repository.run_workflow(payload.model_dump(mode="json"))
+    )
+    if workflow is None:
+        raise HTTPException(status_code=404, detail="Linked meeting or analysis was not found.")
+    return WorkflowRunResponse.model_validate({"workflow": workflow})
+
+
+@router.get("/observability")
+async def enterprise_observability(
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> dict[str, object]:
+    require_enterprise_permission(role, "workspace:admin")
+    snapshot = await with_repository(lambda repository: repository.observability_snapshot())
+    provider_snapshot = provider_status(get_settings())
+    snapshot["provider_health"] = _provider_health_rows(provider_snapshot)
+    snapshot["provider_cache"] = provider_snapshot.get("cache")
+    snapshot["provider_modes"] = provider_snapshot.get("modes", [])
+    return snapshot
 
 
 @router.get("/tasks", response_model=TaskListResponse)

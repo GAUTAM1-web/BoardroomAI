@@ -1,0 +1,213 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: boardroomai
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: boardroomai-config
+  namespace: boardroomai
+data:
+  APP_ENV: production
+  DEPLOYMENT_TARGET: kubernetes
+  PUBLIC_FRONTEND_URL: https://boardroomai.example.com
+  PUBLIC_API_URL: https://api.boardroomai.example.com
+  FRONTEND_BASE_URL: https://boardroomai.example.com
+  BUSINESS_DATA_MODE: demo
+  MAPS_PROVIDER: osm_nominatim
+  PLACES_PROVIDER: osm_nominatim
+  WEATHER_PROVIDER: open_meteo
+  NEWS_PROVIDER: gdelt_doc
+  CURRENCY_PROVIDER: frankfurter
+  GOVERNMENT_DATA_PROVIDER: world_bank
+  DEMOGRAPHICS_PROVIDER: world_bank
+  LIVE_DATA_CACHE_TTL_SECONDS: "900"
+  LIVE_DATA_TIMEOUT_SECONDS: "2.5"
+  CURRENCY_BASE: USD
+  CURRENCY_QUOTES: EUR,GBP,INR
+  PROVIDER_USER_AGENT: BoardroomAI/1.0-kubernetes
+  API_INTERNAL_BASE_URL: http://boardroomai-backend:8000
+  NEXT_PUBLIC_API_BASE_URL: https://api.boardroomai.example.com
+  NEXT_PUBLIC_WS_BASE_URL: wss://api.boardroomai.example.com
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: boardroomai-backend
+  namespace: boardroomai
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: boardroomai-backend
+  template:
+    metadata:
+      labels:
+        app: boardroomai-backend
+    spec:
+      containers:
+        - name: backend
+          image: boardroomai/backend:1.0.0-rc5
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: boardroomai-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: boardroomai-secrets
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: boardroomai-secrets
+                  key: REDIS_URL
+            - name: QDRANT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: boardroomai-secrets
+                  key: QDRANT_URL
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: boardroomai-secrets
+                  key: SESSION_SECRET
+            - name: MAPS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: boardroomai-secrets
+                  key: MAPS_API_KEY
+                  optional: true
+            - name: PLACES_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: boardroomai-secrets
+                  key: PLACES_API_KEY
+                  optional: true
+            - name: GDELT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: boardroomai-secrets
+                  key: GDELT_API_KEY
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: boardroomai-backend
+  namespace: boardroomai
+spec:
+  selector:
+    app: boardroomai-backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: boardroomai-frontend
+  namespace: boardroomai
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: boardroomai-frontend
+  template:
+    metadata:
+      labels:
+        app: boardroomai-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: boardroomai/frontend:1.0.0-rc5
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: boardroomai-config
+          readinessProbe:
+            httpGet:
+              path: /workspace
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: boardroomai-frontend
+  namespace: boardroomai
+spec:
+  selector:
+    app: boardroomai-frontend
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: boardroomai
+  namespace: boardroomai
+spec:
+  rules:
+    - host: boardroomai.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: boardroomai-frontend
+                port:
+                  number: 3000
+    - host: api.boardroomai.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: boardroomai-backend
+                port:
+                  number: 8000

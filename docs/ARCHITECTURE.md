@@ -19,6 +19,11 @@ auth/session layer, demo workspace seed, deployment manifests, diagnostics route
 headers, and environment detection are additive; boardroom, business intelligence, enterprise,
 desktop, and Docker APIs remain stable.
 
+Milestone 13 adds a global enterprise SaaS layer on top of the same records. Executive memory,
+knowledge graph, advanced analytics, assistant answers, document intelligence, workflow
+automation, expanded search, collaboration presence, and observability are derived from existing
+meeting, report, business-analysis, evidence, task, notification, knowledge, and audit tables.
+
 ## System Boundaries
 
 ```text
@@ -29,6 +34,7 @@ Founder UI
   -> Business intelligence domain services
   -> Optional real-world data providers
   -> Enterprise collaboration services
+  -> Enterprise intelligence services
   -> AI provider abstraction
   -> PostgreSQL system of record
   -> Redis event/cache layer
@@ -65,6 +71,7 @@ backend/
     domain/business_intelligence/
                           evidence, location, supplier, finance, and validation services
     domain/enterprise/    role and permission policy
+                          document intelligence and SaaS intelligence helpers
     infrastructure/       database and provider adapters
     schemas/              request and response DTOs
   alembic/                PostgreSQL migrations
@@ -110,6 +117,7 @@ Application/API responsibilities:
 - later persist meetings, turns, votes, report sections, and artifacts
 - enforce additive enterprise role checks through explicit permission policy
 - expose organization, approval, task, calendar, notification, template, knowledge, analytics, admin, and audit endpoints
+- expose executive memory, knowledge graph, assistant, document import, workflow, collaboration presence, expanded search, and observability endpoints
 
 Infrastructure responsibilities:
 
@@ -181,6 +189,16 @@ Enterprise responsibilities:
 - expose analytics and executive dashboards from persisted meetings, decisions, approvals, evidence, and audit records
 
 The frontend enterprise view consumes `/api/v1/enterprise/dashboard` and uses the same design primitives as the rest of the product. The command palette and notification center are client-side shell improvements that sit above the unchanged route structure.
+
+The frontend Intelligence view consumes `/api/v1/enterprise/intelligence-suite` and calls additive
+routes for assistant answers, document imports, workflow automation, and expanded search. If that
+endpoint is unavailable in an older backend, the client derives a reduced view from the existing
+enterprise dashboard and meeting-history endpoints.
+
+No new relational tables are required for the RC5 intelligence pass. Documents are stored as
+`knowledge_items`, workflows produce `enterprise_tasks`, `enterprise_notifications`,
+`knowledge_items`, and `audit_events`, and graph/memory/analytics payloads are computed from
+persisted records at request time.
 
 ## Desktop Shell
 

@@ -63,6 +63,22 @@ def test_enterprise_collaboration_routes_are_registered() -> None:
     assert "post" in paths["/api/v1/approvals/{workflow_id}/steps/{step_id}/decision"]
 
 
+def test_global_enterprise_saas_routes_are_registered() -> None:
+    schema = create_app().openapi()
+    paths = schema["paths"]
+
+    assert "get" in paths["/api/v1/enterprise/intelligence-suite"]
+    assert "get" in paths["/api/v1/enterprise/executive-memory"]
+    assert "get" in paths["/api/v1/enterprise/knowledge-graph"]
+    assert "get" in paths["/api/v1/enterprise/advanced-analytics"]
+    assert "post" in paths["/api/v1/enterprise/assistant"]
+    assert "get" in paths["/api/v1/search/global"]
+    assert "post" in paths["/api/v1/documents/import"]
+    assert "get" in paths["/api/v1/collaboration/presence"]
+    assert "post" in paths["/api/v1/workflows/run"]
+    assert "get" in paths["/api/v1/observability"]
+
+
 def test_production_readiness_routes_are_registered() -> None:
     schema = create_app().openapi()
     paths = schema["paths"]

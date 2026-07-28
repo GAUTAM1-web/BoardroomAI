@@ -185,6 +185,16 @@ These endpoints are additive and preserve all original boardroom and business-an
 - `POST /api/v1/organizations` - create an organization with default departments, teams, templates, knowledge, and review calendar.
 - `GET /api/v1/enterprise/dashboard` - organization dashboard with departments, teams, users, recent meetings, pending approvals, tasks, board activity, upcoming reviews, analytics, and executive signals.
 - `GET /api/v1/enterprise/analytics` - organization metrics for meetings, decisions, approval time, active executives, success rate, evidence quality, confidence trends, risk trends, and recommendation outcomes.
+- `GET /api/v1/enterprise/intelligence-suite` - combined executive memory, knowledge graph, advanced analytics, assistant suggestions, collaboration, workflow catalog, and observability snapshot.
+- `GET /api/v1/enterprise/executive-memory` - role-aware memory derived from stored votes, turns, recommendations, disagreements, confidence history, and decision outcomes.
+- `GET /api/v1/enterprise/knowledge-graph` - graph nodes and edges derived from organizations, users, meetings, reports, analyses, evidence, suppliers, tasks, risks, and knowledge items.
+- `GET /api/v1/enterprise/advanced-analytics` - revenue projections, risk trends, meeting effectiveness, executive performance, confidence evolution, opportunity tracking, decision accuracy, and supplier rankings.
+- `POST /api/v1/enterprise/assistant` - answers questions using stored enterprise search results, memory, and analytics.
+- `GET /api/v1/search/global?q=...` - expanded search across meetings, reports, executives, tasks, business analyses, evidence, suppliers, knowledge, and users.
+- `POST /api/v1/documents/import` - imports a base64 document, extracts supported text, classifies risks/opportunities, stores a knowledge item, and records audit history.
+- `GET /api/v1/collaboration/presence` - active workspace users, meeting collaborators, recent comments, and notifications.
+- `POST /api/v1/workflows/run` - runs registered enterprise automation actions such as assigning tasks, notifying executives, preparing export links, archiving decisions, and refreshing dashboard state.
+- `GET /api/v1/observability` - admin-only operational snapshot with database counts, recent audit/error events, provider health, cache posture, and security posture.
 - `GET /api/v1/enterprise/admin` - users, organizations, redacted API-key posture, providers, feature flags, diagnostics, and usage statistics.
 - `GET /api/v1/enterprise/audit` - audit events such as meeting started, report generated, comment created, task updated, export-ready activity, and approval decisions.
 - `GET /api/v1/report-templates` - seeded templates for restaurant, retail, manufacturing, healthcare, technology, franchise, and export reports.
@@ -207,10 +217,55 @@ These endpoints are additive and preserve all original boardroom and business-an
 
 Role permissions:
 
-- Founder, CEO, Administrator: full workspace administration and approvals.
+- Owner, Founder, CEO, Administrator: full workspace administration and approvals.
 - Manager: create/edit meetings, comment, export, approve, and manage tasks.
+- Executive: create/edit meetings, comment, export, approve, and manage tasks without workspace administration.
 - Analyst: create meetings, view meetings, comment, and manage tasks.
 - Viewer: view-only access.
+- Guest: view-only meeting access.
+
+### POST /api/v1/enterprise/assistant
+
+Request:
+
+```json
+{
+  "question": "Find rejected restaurant recommendations and unresolved risks."
+}
+```
+
+Response:
+
+```json
+{
+  "answer": {
+    "question": "Find rejected restaurant recommendations and unresolved risks.",
+    "answer": "I found stored records related to the question...",
+    "source_count": 4,
+    "sources": [],
+    "recommended_actions": [],
+    "limitations": [],
+    "generated_at": "2026-07-28T00:00:00+00:00"
+  }
+}
+```
+
+### POST /api/v1/documents/import
+
+Request:
+
+```json
+{
+  "filename": "supplier-summary.txt",
+  "content_base64": "U3VwcGxpZXIgcmlzayBzdW1tYXJ5...",
+  "mime_type": "text/plain",
+  "meeting_id": null,
+  "business_analysis_id": null,
+  "tags": ["supplier", "risk"]
+}
+```
+
+Supported local extraction: `.txt`, `.md`, `.csv`, `.json`, `.docx`, `.pptx`, `.xlsx`, and best-effort PDF text. Images are stored as metadata unless an OCR provider is added later. The response labels evidence as user-provided information and returns warnings when text extraction is unavailable.
 
 ## GET /api/v1/business-data/providers
 

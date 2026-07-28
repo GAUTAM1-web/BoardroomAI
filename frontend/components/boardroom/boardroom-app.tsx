@@ -7,6 +7,7 @@ import {
   Bell,
   Bookmark,
   BookmarkCheck,
+  BrainCircuit,
   BriefcaseBusiness,
   Building2,
   CalendarDays,
@@ -98,6 +99,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { BusinessDecisionWorkspace } from "@/components/boardroom/business-decision-workspace";
+import { GlobalEnterpriseSuite } from "@/components/boardroom/global-enterprise-suite";
 
 type BriefFormState = StartupBriefPayload & {
   competitorsText: string;
@@ -107,6 +109,7 @@ type LiveStatus = "idle" | "connecting" | "running" | "completed" | "error";
 type AppView =
   | "dashboard"
   | "enterprise"
+  | "intelligence"
   | "decide"
   | "ideas"
   | "meeting"
@@ -702,6 +705,9 @@ export function BoardroomApp() {
               <NavButton active={view === "enterprise"} icon={Building2} onClick={() => setView("enterprise")}>
                 {ENTERPRISE_COPY.nav.enterprise}
               </NavButton>
+              <NavButton active={view === "intelligence"} icon={BrainCircuit} onClick={() => setView("intelligence")}>
+                {ENTERPRISE_COPY.nav.intelligence}
+              </NavButton>
               <NavButton active={view === "decide"} icon={BriefcaseBusiness} onClick={() => setView("decide")}>
                 Decide
               </NavButton>
@@ -808,6 +814,8 @@ export function BoardroomApp() {
               onRefresh={refreshEnterprise}
             />
           ) : null}
+
+          {view === "intelligence" ? <GlobalEnterpriseSuite /> : null}
 
           {view === "ideas" ? (
             <IdeasView
@@ -2738,6 +2746,7 @@ function CommandPalette({
   const commands = [
     { label: "Open dashboard", icon: BarChart3, action: () => onNavigate("dashboard") },
     { label: "Open enterprise workspace", icon: Building2, action: () => onNavigate("enterprise") },
+    { label: "Open intelligence suite", icon: BrainCircuit, action: () => onNavigate("intelligence") },
     { label: "Start analysis", icon: BriefcaseBusiness, action: () => onNavigate("decide") },
     { label: "Generate startup ideas", icon: Sparkles, action: () => onNavigate("ideas") },
     { label: "Run demo board meeting", icon: Wifi, action: onStartDemo },
