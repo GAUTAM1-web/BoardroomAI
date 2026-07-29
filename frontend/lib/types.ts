@@ -494,3 +494,110 @@ export type BusinessProviderStatus = {
   last_updated?: string | null;
   modes: Array<Record<string, unknown>>;
 };
+
+export type OperationsJobType =
+  | "report_generation"
+  | "scheduled_workflow"
+  | "provider_sync"
+  | "document_processing"
+  | "email_delivery"
+  | "analytics_refresh"
+  | "scheduled_export";
+
+export type OperationsJobStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "canceled"
+  | "dead_letter";
+
+export type OperationsJob = {
+  id: string;
+  type: OperationsJobType | string;
+  status: OperationsJobStatus | string;
+  payload: Record<string, unknown>;
+  actor?: string | null;
+  organization_id?: string | null;
+  attempts: number;
+  max_attempts: number;
+  progress: number;
+  scheduled_for?: string | null;
+  created_at: string;
+  updated_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  error?: string | null;
+  cancel_requested: boolean;
+};
+
+export type OperationsJobStats = {
+  backend: string;
+  counts: Record<OperationsJobStatus | string, number>;
+  queue_size: number;
+  dead_letter_size: number;
+  supported_job_types: OperationsJobType[];
+};
+
+export type OperationsJobsResponse = {
+  jobs: OperationsJob[];
+  stats: OperationsJobStats;
+};
+
+export type OperationsSchedule = {
+  id: string;
+  name: string;
+  cron: string;
+  job_type: OperationsJobType | string;
+  payload: Record<string, unknown>;
+  actor?: string | null;
+  organization_id?: string | null;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+  last_run_at?: string | null;
+  next_run_at?: string | null;
+};
+
+export type OperationsSchedulesResponse = {
+  schedules: OperationsSchedule[];
+};
+
+export type OperationsPluginManifest = {
+  generated_at: string;
+  plugin_types: string[];
+  plugins: Array<Record<string, unknown>>;
+  counts: Record<string, number>;
+};
+
+export type OperationsMonitoringSnapshot = {
+  generated_at: string;
+  api: {
+    started_at: string;
+    uptime_seconds: number;
+    request_count: number;
+    active_requests: number;
+    status_counts: Record<string, number>;
+    latency_ms: {
+      count: number;
+      average: number;
+      p95: number;
+      max: number;
+    };
+  };
+  process: {
+    pid?: number;
+    platform?: string;
+    python?: string;
+    process_time_seconds?: number;
+    memory_bytes?: Record<string, number>;
+    cpu_percent?: number | null;
+    rss_bytes?: number | null;
+    psutil?: string;
+  };
+  active_users: number;
+  dependencies: Record<string, unknown>;
+  providers: BusinessProviderStatus | Record<string, unknown>;
+  jobs: OperationsJobStats;
+  cache: Record<string, unknown>;
+};

@@ -100,6 +100,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { BusinessDecisionWorkspace } from "@/components/boardroom/business-decision-workspace";
 import { GlobalEnterpriseSuite } from "@/components/boardroom/global-enterprise-suite";
+import { OperationsDashboard } from "@/components/boardroom/operations-dashboard";
 
 type BriefFormState = StartupBriefPayload & {
   competitorsText: string;
@@ -110,6 +111,7 @@ type AppView =
   | "dashboard"
   | "enterprise"
   | "intelligence"
+  | "operations"
   | "decide"
   | "ideas"
   | "meeting"
@@ -708,6 +710,9 @@ export function BoardroomApp() {
               <NavButton active={view === "intelligence"} icon={BrainCircuit} onClick={() => setView("intelligence")}>
                 {ENTERPRISE_COPY.nav.intelligence}
               </NavButton>
+              <NavButton active={view === "operations"} icon={MonitorCog} onClick={() => setView("operations")}>
+                {ENTERPRISE_COPY.nav.operations}
+              </NavButton>
               <NavButton active={view === "decide"} icon={BriefcaseBusiness} onClick={() => setView("decide")}>
                 Decide
               </NavButton>
@@ -816,6 +821,8 @@ export function BoardroomApp() {
           ) : null}
 
           {view === "intelligence" ? <GlobalEnterpriseSuite /> : null}
+
+          {view === "operations" ? <OperationsDashboard /> : null}
 
           {view === "ideas" ? (
             <IdeasView
@@ -2747,6 +2754,7 @@ function CommandPalette({
     { label: "Open dashboard", icon: BarChart3, action: () => onNavigate("dashboard") },
     { label: "Open enterprise workspace", icon: Building2, action: () => onNavigate("enterprise") },
     { label: "Open intelligence suite", icon: BrainCircuit, action: () => onNavigate("intelligence") },
+    { label: "Open operations dashboard", icon: MonitorCog, action: () => onNavigate("operations") },
     { label: "Start analysis", icon: BriefcaseBusiness, action: () => onNavigate("decide") },
     { label: "Generate startup ideas", icon: Sparkles, action: () => onNavigate("ideas") },
     { label: "Run demo board meeting", icon: Wifi, action: onStartDemo },

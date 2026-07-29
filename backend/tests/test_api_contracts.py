@@ -93,3 +93,26 @@ def test_production_readiness_routes_are_registered() -> None:
     assert "get" in paths["/api/v1/diagnostics/environment"]
     assert "get" in paths["/api/v1/diagnostics/providers"]
     assert "get" in paths["/api/v1/diagnostics/dependencies"]
+    assert "get" in paths["/api/v1/versions"]
+    assert "get" in paths["/api/v2/status"]
+
+
+def test_operations_routes_are_registered() -> None:
+    schema = create_app().openapi()
+    paths = schema["paths"]
+
+    assert "get" in paths["/api/v1/operations/cache/health"]
+    assert "get" in paths["/api/v1/operations/jobs"]
+    assert "post" in paths["/api/v1/operations/jobs"]
+    assert "get" in paths["/api/v1/operations/jobs/{job_id}"]
+    assert "post" in paths["/api/v1/operations/jobs/{job_id}/cancel"]
+    assert "post" in paths["/api/v1/operations/jobs/{job_id}/retry"]
+    assert "get" in paths["/api/v1/operations/schedules"]
+    assert "post" in paths["/api/v1/operations/schedules"]
+    assert "patch" in paths["/api/v1/operations/schedules/{schedule_id}"]
+    assert "post" in paths["/api/v1/operations/schedules/run-due"]
+    assert "get" in paths["/api/v1/operations/monitoring"]
+    assert "get" in paths["/api/v1/operations/recovery/plan"]
+    assert "get" in paths["/api/v1/operations/integrity"]
+    assert "get" in paths["/api/v1/operations/plugins"]
+    assert "get" in paths["/api/v1/operations/benchmarks"]

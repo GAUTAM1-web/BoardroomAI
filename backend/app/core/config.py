@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
     qdrant_url: str = Field(default="http://localhost:6333", alias="QDRANT_URL")
     ai_provider: str = Field(default="local", alias="AI_PROVIDER")
+    openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
+    anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
+    gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
     business_data_mode: str = Field(default="demo", alias="BUSINESS_DATA_MODE")
     maps_provider: str = Field(default="osm_nominatim", alias="MAPS_PROVIDER")
     places_provider: str = Field(default="osm_nominatim", alias="PLACES_PROVIDER")
@@ -53,7 +56,21 @@ class Settings(BaseSettings):
     google_client_id: str = Field(default="", alias="GOOGLE_CLIENT_ID")
     demo_content_enabled: bool = Field(default=True, alias="DEMO_CONTENT_ENABLED")
     rate_limit_per_minute: int = Field(default=240, alias="RATE_LIMIT_PER_MINUTE")
+    distributed_sessions_enabled: bool = Field(default=True, alias="DISTRIBUTED_SESSIONS_ENABLED")
+    shared_cache_ttl_seconds: int = Field(default=300, alias="SHARED_CACHE_TTL_SECONDS")
+    job_queue_backend: str = Field(default="redis", alias="JOB_QUEUE_BACKEND")
+    job_default_timeout_seconds: int = Field(default=900, alias="JOB_DEFAULT_TIMEOUT_SECONDS")
+    job_max_attempts: int = Field(default=3, alias="JOB_MAX_ATTEMPTS")
+    csrf_protection_enabled: bool = Field(default=False, alias="CSRF_PROTECTION_ENABLED")
     security_headers_enabled: bool = Field(default=True, alias="SECURITY_HEADERS_ENABLED")
+    content_security_policy: str = Field(
+        default=(
+            "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "connect-src 'self' http: https: ws: wss:"
+        ),
+        alias="CONTENT_SECURITY_POLICY",
+    )
     cors_origins: list[str] = Field(
         default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"]
     )

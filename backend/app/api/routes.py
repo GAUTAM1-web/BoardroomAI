@@ -24,8 +24,14 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core.cache import SharedCache, session_cache_key
 from app.core.config import get_settings
 from app.core.deployment import environment_diagnostics, is_production, redacted_provider_posture
+from app.core.jobs import JobQueue
+from app.core.monitoring import monitoring_snapshot
+from app.core.plugins import plugin_manifest
+from app.core.recovery import integrity_check, recovery_plan
+from app.core.scheduler import ScheduleStore
 from app.domain.auth import auth_capabilities, create_session_payload, sign_session, verify_session
 from app.domain.boardroom.export import report_to_markdown, report_to_pdf
 from app.domain.boardroom.ideas import generate_startup_ideas
@@ -103,8 +109,18 @@ from app.schemas.enterprise import (
     WorkflowRunRequest,
     WorkflowRunResponse,
 )
+from app.schemas.operations import (
+    JobCreateRequest,
+    JobListResponse,
+    JobResponse,
+    ScheduleCreateRequest,
+    ScheduleListResponse,
+    ScheduleResponse,
+    ScheduleToggleRequest,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["boardroom"])
+v2_router = APIRouter(prefix="/api/v2", tags=["boardroom-v2"])
 T = TypeVar("T")
 logger = structlog.get_logger("boardroom.api")
 
@@ -202,6 +218,12 @@ async def current_auth_session(request: Request) -> AuthStatusResponse:
         _session_token_from_request(request, settings.session_cookie_name),
         settings,
     )
+    if payload is not None and settings.distributed_sessions_enabled:
+        await _shared_cache(request).set_json(
+            session_cache_key(str(payload.get("session_id"))),
+            payload,
+            ttl_seconds=settings.session_ttl_seconds,
+        )
     return AuthStatusResponse.model_validate(
         {
             "authenticated": payload is not None,
@@ -214,6 +236,7 @@ async def current_auth_session(request: Request) -> AuthStatusResponse:
 @router.post("/auth/session", response_model=AuthSessionResponse)
 async def create_auth_session(
     payload: AuthSessionRequest,
+    request: Request,
     response: Response,
 ) -> AuthSessionResponse:
     settings = get_settings()
@@ -232,12 +255,25 @@ async def create_auth_session(
         secure=is_production(settings),
         samesite="lax",
     )
+    if settings.distributed_sessions_enabled:
+        await _shared_cache(request).set_json(
+            session_cache_key(str(session_payload["session_id"])),
+            session_payload,
+            ttl_seconds=settings.session_ttl_seconds,
+        )
     return AuthSessionResponse.model_validate(session_payload)
 
 
 @router.post("/auth/logout", response_model=AuthLogoutResponse)
-async def logout_auth_session(response: Response) -> AuthLogoutResponse:
-    response.delete_cookie(get_settings().session_cookie_name)
+async def logout_auth_session(request: Request, response: Response) -> AuthLogoutResponse:
+    settings = get_settings()
+    payload = verify_session(
+        _session_token_from_request(request, settings.session_cookie_name),
+        settings,
+    )
+    if payload is not None:
+        await _shared_cache(request).delete(session_cache_key(str(payload.get("session_id"))))
+    response.delete_cookie(settings.session_cookie_name)
     return AuthLogoutResponse()
 
 
@@ -268,6 +304,204 @@ async def diagnostics() -> dict[str, object]:
         "environment": environment_diagnostics(settings),
         "dependencies": dependencies,
         "providers": provider_status(settings),
+    }
+
+
+@router.get("/versions")
+async def api_versions() -> dict[str, object]:
+    return {
+        "current": "v1",
+        "supported": ["v1", "v2-preview"],
+        "deprecated": [],
+        "notes": "v1 remains stable. v2 is a compatibility preview for future API expansion.",
+    }
+
+
+@router.get("/operations/cache/health")
+async def operations_cache_health(
+    request: Request,
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> dict[str, object]:
+    require_enterprise_permission(role, "workspace:admin")
+    return await _shared_cache(request).health()
+
+
+@router.get("/operations/jobs", response_model=JobListResponse)
+async def operations_jobs(
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=200),
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> JobListResponse:
+    require_enterprise_permission(role, "workspace:admin")
+    queue = _job_queue(request)
+    return JobListResponse.model_validate(
+        {"jobs": await queue.list(limit), "stats": await queue.stats()}
+    )
+
+
+@router.post("/operations/jobs", response_model=JobResponse)
+async def create_operations_job(
+    payload: JobCreateRequest,
+    request: Request,
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> JobResponse:
+    normalized_role = require_enterprise_permission(role, "workspace:admin")
+    job = await _job_queue(request).enqueue(
+        payload.job_type,
+        payload.payload,
+        actor=normalized_role,
+        organization_id=payload.organization_id,
+    )
+    return JobResponse.model_validate({"job": job})
+
+
+@router.get("/operations/jobs/{job_id}", response_model=JobResponse)
+async def operations_job_detail(
+    job_id: str,
+    request: Request,
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> JobResponse:
+    require_enterprise_permission(role, "workspace:admin")
+    job = await _job_queue(request).get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return JobResponse.model_validate({"job": job})
+
+
+@router.post("/operations/jobs/{job_id}/cancel", response_model=JobResponse)
+async def cancel_operations_job(
+    job_id: str,
+    request: Request,
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> JobResponse:
+    require_enterprise_permission(role, "workspace:admin")
+    job = await _job_queue(request).cancel(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return JobResponse.model_validate({"job": job})
+
+
+@router.post("/operations/jobs/{job_id}/retry", response_model=JobResponse)
+async def retry_operations_job(
+    job_id: str,
+    request: Request,
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> JobResponse:
+    require_enterprise_permission(role, "workspace:admin")
+    job = await _job_queue(request).retry(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return JobResponse.model_validate({"job": job})
+
+
+@router.get("/operations/schedules", response_model=ScheduleListResponse)
+async def operations_schedules(
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=200),
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> ScheduleListResponse:
+    require_enterprise_permission(role, "workspace:admin")
+    schedules = await _schedule_store(request).list(limit=limit)
+    return ScheduleListResponse.model_validate({"schedules": schedules})
+
+
+@router.post("/operations/schedules", response_model=ScheduleResponse)
+async def create_operations_schedule(
+    payload: ScheduleCreateRequest,
+    request: Request,
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> ScheduleResponse:
+    normalized_role = require_enterprise_permission(role, "workspace:admin")
+    try:
+        schedule = await _schedule_store(request).create(
+            payload.name,
+            payload.cron,
+            payload.job_type,
+            payload.payload,
+            actor=normalized_role,
+            organization_id=payload.organization_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return ScheduleResponse.model_validate({"schedule": schedule})
+
+
+@router.patch("/operations/schedules/{schedule_id}", response_model=ScheduleResponse)
+async def update_operations_schedule(
+    schedule_id: str,
+    payload: ScheduleToggleRequest,
+    request: Request,
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> ScheduleResponse:
+    require_enterprise_permission(role, "workspace:admin")
+    schedule = await _schedule_store(request).set_enabled(schedule_id, payload.enabled)
+    if schedule is None:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    return ScheduleResponse.model_validate({"schedule": schedule})
+
+
+@router.post("/operations/schedules/run-due")
+async def enqueue_due_schedules(
+    request: Request,
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> dict[str, object]:
+    require_enterprise_permission(role, "workspace:admin")
+    jobs = await _schedule_store(request).enqueue_due()
+    return {"jobs": jobs, "count": len(jobs)}
+
+
+@router.get("/operations/monitoring")
+async def operations_monitoring(
+    request: Request,
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> dict[str, object]:
+    require_enterprise_permission(role, "workspace:admin")
+    settings = get_settings()
+    dependencies = await _dependency_diagnostics()
+    providers = provider_status(settings)
+    return monitoring_snapshot(
+        dependencies=dependencies,
+        providers=providers,
+        jobs=await _job_queue(request).stats(),
+        cache=await _shared_cache(request).health(),
+        active_users=await _active_user_count(),
+    )
+
+
+@router.get("/operations/recovery/plan")
+async def operations_recovery_plan(
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> dict[str, object]:
+    require_enterprise_permission(role, "workspace:admin")
+    return recovery_plan(get_settings())
+
+
+@router.get("/operations/integrity")
+async def operations_integrity(
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> dict[str, object]:
+    require_enterprise_permission(role, "workspace:admin")
+    return integrity_check(get_settings(), await _dependency_diagnostics())
+
+
+@router.get("/operations/plugins")
+async def operations_plugins(
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> dict[str, object]:
+    require_enterprise_permission(role, "workspace:admin")
+    return plugin_manifest()
+
+
+@router.get("/operations/benchmarks")
+async def operations_benchmarks(
+    request: Request,
+    role: str | None = Header(default="Administrator", alias="X-Boardroom-Role"),
+) -> dict[str, object]:
+    require_enterprise_permission(role, "workspace:admin")
+    return {
+        "benchmark_type": "live_runtime_snapshot",
+        "monitoring": await operations_monitoring(request, role),
+        "documented_results": "/docs/RELEASE_RC6.md",
     }
 
 
@@ -899,6 +1133,34 @@ def _session_token_from_request(request: Request, cookie_name: str) -> str | Non
     return request.cookies.get(cookie_name)
 
 
+def _shared_cache(request: Request) -> SharedCache:
+    cache = getattr(request.app.state, "shared_cache", None)
+    return cache if isinstance(cache, SharedCache) else SharedCache(get_settings())
+
+
+def _job_queue(request: Request) -> JobQueue:
+    queue = getattr(request.app.state, "job_queue", None)
+    return queue if isinstance(queue, JobQueue) else JobQueue(get_settings())
+
+
+def _schedule_store(request: Request) -> ScheduleStore:
+    store = getattr(request.app.state, "schedule_store", None)
+    if isinstance(store, ScheduleStore):
+        return store
+    return ScheduleStore(_job_queue(request))
+
+
+async def _active_user_count() -> int:
+    try:
+        dashboard_payload = await with_repository(
+            lambda repository: repository.enterprise_dashboard()
+        )
+    except HTTPException:
+        return 0
+    users = dashboard_payload.get("users", [])
+    return len(users) if isinstance(users, list) else 0
+
+
 async def _dependency_diagnostics() -> dict[str, object]:
     settings = get_settings()
     checks = [
@@ -967,6 +1229,17 @@ def _business_export_payload(analysis: dict[str, object]) -> dict[str, object]:
                 else "Unknown"
             ),
         },
+    }
+
+
+@v2_router.get("/status")
+async def v2_status() -> dict[str, object]:
+    return {
+        "status": "preview",
+        "current_stable_version": "v1",
+        "supported_versions": ["v1", "v2-preview"],
+        "backward_compatibility": "v1 endpoints remain unchanged",
+        "deprecation": {"v1": None},
     }
 
 

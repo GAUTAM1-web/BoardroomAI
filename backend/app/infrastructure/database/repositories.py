@@ -3125,14 +3125,22 @@ class PostgresMeetingRepository:
         }
 
     def _audit_event_dict(self, record: AuditEventRecord) -> dict[str, object]:
+        details = record.details or {}
+        actor = details.get("actor") or details.get("actor_role") or details.get("actor_email")
+        outcome = details.get("outcome") or "success"
         return {
             "id": str(record.id),
             "organization_id": str(record.organization_id) if record.organization_id else None,
+            "organization": str(record.organization_id) if record.organization_id else "default",
             "actor_user_id": str(record.actor_user_id) if record.actor_user_id else None,
+            "actor": str(actor) if actor else "system",
+            "ip": details.get("ip"),
             "action": record.action,
+            "outcome": str(outcome),
             "entity_type": record.entity_type,
             "entity_id": str(record.entity_id) if record.entity_id else None,
-            "details": record.details,
+            "details": details,
+            "timestamp": _iso(record.created_at),
             "created_at": _iso(record.created_at),
         }
 
@@ -3171,6 +3179,8 @@ class PostgresMeetingRepository:
         entity_id: UUID | None,
         details: dict[str, object],
     ) -> None:
+        normalized_details = dict(details)
+        normalized_details.setdefault("outcome", "success")
         self.session.add(
             AuditEventRecord(
                 organization_id=organization_id,
@@ -3178,7 +3188,7 @@ class PostgresMeetingRepository:
                 action=action,
                 entity_type=entity_type,
                 entity_id=entity_id,
-                details=self._json_details(details),
+                details=self._json_details(normalized_details),
             )
         )
 

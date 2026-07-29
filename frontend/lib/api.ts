@@ -19,6 +19,13 @@ import type {
   GlobalEnterpriseSearchResults,
   GlobalSearchResults,
   MeetingSummary,
+  OperationsJob,
+  OperationsJobStats,
+  OperationsJobType,
+  OperationsJobsResponse,
+  OperationsMonitoringSnapshot,
+  OperationsPluginManifest,
+  OperationsSchedulesResponse,
   StartupBriefPayload,
   StartupIdea,
   StartupIdeaGenerationPayload
@@ -617,6 +624,190 @@ export async function retryBusinessProviders(): Promise<BusinessProviderStatus> 
     },
     "Business data provider retry failed"
   );
+}
+
+export async function fetchOperationsMonitoring(): Promise<OperationsMonitoringSnapshot> {
+  try {
+    return await requestJson<OperationsMonitoringSnapshot>(
+      `${API_PREFIX}/operations/monitoring`,
+      {
+        cache: "no-store",
+        headers: {
+          "X-Boardroom-Role": "Administrator"
+        }
+      },
+      "Operations monitoring failed to load"
+    );
+  } catch (error) {
+    if (isApiStatus(error, 404)) {
+      return fetchOperationsMonitoringFallback();
+    }
+    throw error;
+  }
+}
+
+export async function fetchOperationsJobs(limit = 20): Promise<OperationsJobsResponse> {
+  try {
+    return await requestJson<OperationsJobsResponse>(
+      `${API_PREFIX}/operations/jobs?limit=${limit}`,
+      {
+        cache: "no-store",
+        headers: {
+          "X-Boardroom-Role": "Administrator"
+        }
+      },
+      "Operations jobs failed to load"
+    );
+  } catch (error) {
+    if (isApiStatus(error, 404)) {
+      return {
+        jobs: [],
+        stats: operationsJobStatsFallback()
+      };
+    }
+    throw error;
+  }
+}
+
+export async function createOperationsJob(
+  jobType: OperationsJobType,
+  payload: Record<string, unknown> = {}
+): Promise<OperationsJob> {
+  const data = await requestJson<{ job: OperationsJob }>(
+    `${API_PREFIX}/operations/jobs`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Boardroom-Role": "Administrator"
+      },
+      body: JSON.stringify({
+        job_type: jobType,
+        payload
+      })
+    },
+    "Operations job creation failed"
+  );
+  return data.job;
+}
+
+export async function fetchOperationsSchedules(
+  limit = 20
+): Promise<OperationsSchedulesResponse> {
+  try {
+    return await requestJson<OperationsSchedulesResponse>(
+      `${API_PREFIX}/operations/schedules?limit=${limit}`,
+      {
+        cache: "no-store",
+        headers: {
+          "X-Boardroom-Role": "Administrator"
+        }
+      },
+      "Operations schedules failed to load"
+    );
+  } catch (error) {
+    if (isApiStatus(error, 404)) {
+      return { schedules: [] };
+    }
+    throw error;
+  }
+}
+
+export async function fetchOperationsPlugins(): Promise<OperationsPluginManifest> {
+  try {
+    return await requestJson<OperationsPluginManifest>(
+      `${API_PREFIX}/operations/plugins`,
+      {
+        cache: "no-store",
+        headers: {
+          "X-Boardroom-Role": "Administrator"
+        }
+      },
+      "Operations plugins failed to load"
+    );
+  } catch (error) {
+    if (isApiStatus(error, 404)) {
+      return {
+        generated_at: new Date().toISOString(),
+        plugin_types: [],
+        plugins: [],
+        counts: {}
+      };
+    }
+    throw error;
+  }
+}
+
+async function fetchOperationsMonitoringFallback(): Promise<OperationsMonitoringSnapshot> {
+  const providers = await fetchBusinessProviderStatus();
+  const now = new Date().toISOString();
+  return {
+    generated_at: now,
+    api: {
+      started_at: now,
+      uptime_seconds: 0,
+      request_count: 0,
+      active_requests: 0,
+      status_counts: {},
+      latency_ms: {
+        count: 0,
+        average: 0,
+        p95: 0,
+        max: 0
+      }
+    },
+    process: {
+      platform: "compatibility",
+      memory_bytes: {}
+    },
+    active_users: 1,
+    dependencies: {
+      api: {
+        status: "compatibility",
+        note: "Operations endpoints are unavailable on this backend."
+      },
+      redis: {
+        status: "unknown"
+      },
+      qdrant: {
+        status: "unknown"
+      },
+      database: {
+        status: "unknown"
+      }
+    },
+    providers,
+    jobs: operationsJobStatsFallback(),
+    cache: {
+      backend: "memory",
+      status: "compatibility"
+    }
+  };
+}
+
+function operationsJobStatsFallback(): OperationsJobStats {
+  return {
+    backend: "memory",
+    counts: {
+      queued: 0,
+      running: 0,
+      completed: 0,
+      failed: 0,
+      canceled: 0,
+      dead_letter: 0
+    },
+    queue_size: 0,
+    dead_letter_size: 0,
+    supported_job_types: [
+      "report_generation",
+      "scheduled_workflow",
+      "provider_sync",
+      "document_processing",
+      "email_delivery",
+      "analytics_refresh",
+      "scheduled_export"
+    ]
+  };
 }
 
 export async function analyzeBusiness(

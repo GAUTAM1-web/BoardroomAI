@@ -27,6 +27,14 @@ data:
   CURRENCY_BASE: USD
   CURRENCY_QUOTES: EUR,GBP,INR
   PROVIDER_USER_AGENT: BoardroomAI/1.0-kubernetes
+  SECURITY_HEADERS_ENABLED: "true"
+  CSRF_PROTECTION_ENABLED: "true"
+  DISTRIBUTED_SESSIONS_ENABLED: "true"
+  SHARED_CACHE_TTL_SECONDS: "300"
+  JOB_QUEUE_BACKEND: redis
+  JOB_DEFAULT_TIMEOUT_SECONDS: "900"
+  JOB_MAX_ATTEMPTS: "3"
+  BOARDROOMAI_PLUGIN_MODULES: ""
   API_INTERNAL_BASE_URL: http://boardroomai-backend:8000
   NEXT_PUBLIC_API_BASE_URL: https://api.boardroomai.example.com
   NEXT_PUBLIC_WS_BASE_URL: wss://api.boardroomai.example.com
@@ -48,7 +56,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: boardroomai/backend:1.0.0-rc5
+          image: boardroomai/backend:1.0.0-rc6
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
@@ -144,7 +152,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: boardroomai/frontend:1.0.0-rc5
+          image: boardroomai/frontend:1.0.0-rc6
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000

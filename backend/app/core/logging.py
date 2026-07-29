@@ -9,6 +9,7 @@ import structlog
 from fastapi import Request, Response
 
 from app.core.config import Settings
+from app.core.monitoring import mark_request_started, record_request, record_request_exception
 
 
 def configure_logging(settings: Settings) -> None:
@@ -40,23 +41,37 @@ async def request_log_middleware(
 ) -> Response:
     logger = structlog.get_logger("boardroom.request")
     started = time.perf_counter()
+    mark_request_started()
     try:
         response = await call_next(request)
     except Exception:
         duration_ms = round((time.perf_counter() - started) * 1000, 2)
+        record_request_exception(duration_ms)
         logger.exception(
             "request_failed",
             method=request.method,
             path=request.url.path,
+            action=f"{request.method} {request.url.path}",
+            outcome="failure",
+            actor=request.headers.get("X-Boardroom-Role", "anonymous"),
+            ip=request.client.host if request.client else None,
+            organization=request.headers.get("X-Boardroom-Organization", "default"),
             duration_ms=duration_ms,
         )
         raise
 
     duration_ms = round((time.perf_counter() - started) * 1000, 2)
+    record_request(response.status_code, duration_ms)
+    outcome = "success" if response.status_code < 400 else "failure"
     logger.info(
         "request_completed",
         method=request.method,
         path=request.url.path,
+        action=f"{request.method} {request.url.path}",
+        outcome=outcome,
+        actor=request.headers.get("X-Boardroom-Role", "anonymous"),
+        ip=request.client.host if request.client else None,
+        organization=request.headers.get("X-Boardroom-Organization", "default"),
         status_code=response.status_code,
         duration_ms=duration_ms,
     )

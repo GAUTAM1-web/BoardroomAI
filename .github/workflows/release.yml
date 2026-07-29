@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example 1.0.0-rc6"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build And Tag
+    runs-on: ubuntu-latest
+    env:
+      APP_ENV: production
+      SESSION_SECRET: release-session-secret-used-only-for-builds
+      DATABASE_URL: postgresql+asyncpg://boardroom:boardroom_dev_password@localhost:5432/boardroom_ai
+      REDIS_URL: redis://localhost:6379/0
+      QDRANT_URL: http://localhost:6333
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Validate backend
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m ruff check .
+          python -m pytest
+
+      - name: Validate frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm run build
+
+      - name: Validate Docker images
+        run: |
+          docker compose config
+          docker compose -f docker-compose.prod.yml config
+          docker build -f Dockerfile.backend .
+          docker build frontend
+
+      - name: Create version tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ inputs.version }}" -m "BoardroomAI v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"

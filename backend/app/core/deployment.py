@@ -51,6 +51,7 @@ def effective_cors_origins(settings: Settings) -> list[str]:
 def environment_diagnostics(settings: Settings) -> dict[str, Any]:
     target = detect_deployment_target(settings)
     production = is_production(settings)
+    profile = configuration_profile(settings)
     checks = [
         _check("DATABASE_URL", bool(settings.database_url), required=True),
         _check("REDIS_URL", bool(settings.redis_url), required=production),
@@ -73,6 +74,7 @@ def environment_diagnostics(settings: Settings) -> dict[str, Any]:
         "environment": settings.app_env,
         "deployment_target": target,
         "production": production,
+        "profile": profile,
         "public_urls": {
             "frontend": normalize_url(settings.public_frontend_url or settings.frontend_base_url),
             "api": normalize_url(settings.public_api_url),
@@ -90,6 +92,41 @@ def environment_diagnostics(settings: Settings) -> dict[str, Any]:
                 "manual workflows."
             ),
         ],
+    }
+
+
+def configuration_profile(settings: Settings) -> dict[str, Any]:
+    environment = settings.app_env.strip().lower() or "development"
+    required_by_environment = {
+        "development": ["DATABASE_URL"],
+        "testing": ["DATABASE_URL"],
+        "staging": [
+            "DATABASE_URL",
+            "REDIS_URL",
+            "QDRANT_URL",
+            "SESSION_SECRET",
+            "PUBLIC_API_URL",
+            "PUBLIC_FRONTEND_URL",
+        ],
+        "production": [
+            "DATABASE_URL",
+            "REDIS_URL",
+            "QDRANT_URL",
+            "SESSION_SECRET",
+            "PUBLIC_API_URL",
+            "PUBLIC_FRONTEND_URL",
+        ],
+    }
+    required = required_by_environment.get(environment, required_by_environment["development"])
+    return {
+        "environment": environment,
+        "required_variables": required,
+        "distributed_sessions": getattr(settings, "distributed_sessions_enabled", True),
+        "job_queue_backend": getattr(settings, "job_queue_backend", "redis"),
+        "shared_cache_ttl_seconds": getattr(settings, "shared_cache_ttl_seconds", 300),
+        "csrf_protection": getattr(settings, "csrf_protection_enabled", False),
+        "security_headers": getattr(settings, "security_headers_enabled", True),
+        "supports": ["development", "testing", "staging", "production"],
     }
 
 
